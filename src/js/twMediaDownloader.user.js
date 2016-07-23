@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.0.1
+// @version         0.1.0.2
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.0.0/jszip.min.js
@@ -759,11 +759,9 @@ var download_media_timeline = ( function () {
                 if (
                     ( ! timeline_result.response_json.has_more_items ) ||
                     ( timeline_result.tweet_infos.length <= 0 ) ||
-                    ( since_id && ( timeline_result.response_json.min_position < since_id ) ) ||
-                    ( ( function() { is_limited = !! ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) ); return is_limited; } )() )
+                    ( since_id && ( timeline_result.response_json.min_position <= since_id ) )
                 ) {
                     complete();
-                    
                     finish();
                     
                     return true;
@@ -850,7 +848,7 @@ var download_media_timeline = ( function () {
                     
                     
                     function get_next_tweet_images() {
-                        if ( is_close() || is_stop() || is_complete( timeline_result ) ) {
+                        if ( is_close() || is_stop() ) {
                             return;
                         }
                         
@@ -859,6 +857,9 @@ var download_media_timeline = ( function () {
                             current_image_download_counter = 0;
                         
                         if ( ! current_tweet_info ) {
+                            if ( is_complete( timeline_result ) ) {
+                                return;
+                            }
                             get_next_media_timeline( timeline_result.response_json.min_position );
                             return;
                         }
@@ -923,6 +924,13 @@ var download_media_timeline = ( function () {
                                     self.log( '  img' + ( 1 + index ) + ')', image_url, '=>', image_result.error_message );
                                 }
                             } );
+                            
+                            if ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) ) {
+                                complete();
+                                finish();
+                                
+                                return;
+                            }
                             
                             get_next_tweet_images();
                         } // end of push_image_result()
