@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.0.3
+// @version         0.1.0.4
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.0.0/jszip.min.js
@@ -986,6 +986,9 @@ var download_media_timeline = ( function () {
                 
                 
                 function close() {
+                    zip = null;
+                    MediaTimeline = null;
+                    
                     self.hide_container();
                 } // end of close()
                 
@@ -1022,12 +1025,17 @@ var download_media_timeline = ( function () {
                         var zip_filename = filename_prefix + '.zip';
                         
                         save_blob( zip_filename, zip_content );
+                        
+                        zip = null;
                     } );
                     
                 } // end of save()
                 
                 
                 function finish() {
+                    zip = null;
+                    MediaTimeline = null;
+                    
                     self.reset_flags();
                     self.reset_buttons();
                 } // end of finish()
@@ -1092,6 +1100,9 @@ var download_media_timeline = ( function () {
                                 var image_filename = [ screen_name, current_tweet_id, 'img' + ( 1 + index ) ].join( '-' ) + '.' + get_img_extension( image_url );
                                 
                                 zip.file( image_filename, image_result.arraybuffer );
+                                
+                                delete image_result.arraybuffer;
+                                image_result.arraybuffer = null;
                             }
                             else {
                                 self.log( '  img' + ( 1 + index ) + ')', image_url, '=>', image_result.error_message );
@@ -1103,18 +1114,49 @@ var download_media_timeline = ( function () {
                     } // end of push_image_result()
                     
                     
-                    $.each( current_tweet_info.image_urls, function ( index, image_url ) {
+                    function load_image( image_url_index, first_image_url, current_image_url ) {
+                        var extension_list = [ 'png', 'jpg', 'gif' ],
+                            next_extension_map = {
+                                'png' : 'gif'
+                            ,   'gif' : 'jpg'
+                            ,   'jpg' : 'png'
+                            },
+                            current_image_url = ( current_image_url ) ? current_image_url : first_image_url,
+                            first_extension = get_img_extension( first_image_url, extension_list ),
+                            current_extension = get_img_extension( current_image_url, extension_list );
+                        
+                        current_tweet_info.image_urls[ image_url_index ] = current_image_url;
+                        
                         GM_xmlhttpRequest( {
                             method : 'GET'
-                        ,   url : image_url
+                        ,   url : current_image_url
                         ,   responseType : 'arraybuffer'
                         ,   onload : function ( response ) {
-                                push_image_result( image_url, response.response );
+                                if ( response.status < 200 || 300 <= response.status ) {
+                                    // 元の拡張子が png でも、png:orig が取得できない場合がある
+                                    // → gif:orig なら取得できるケース有り・ステータスチェックし、エラー時にはリトライする
+                                    var next_extension = next_extension_map[ current_extension ];
+                                    
+                                    if ( next_extension == first_extension ) {
+                                        current_tweet_info.image_urls[ image_url_index ] = first_image_url;
+                                        push_image_result( first_image_url, null, response.status + ' ' + response.statusText );
+                                        return;
+                                    }
+                                    load_image( image_url_index, first_image_url, current_image_url.replace( '.' + current_extension, '.' + next_extension ) );
+                                    return;
+                                }
+                                push_image_result( current_image_url, response.response );
                             }
                         ,   onerror : function ( response ) {
-                                push_image_result( image_url, null, response.status + ' ' + response.statusText );
+                                push_image_result( current_image_url, null, response.status + ' ' + response.statusText );
                             }
                         } );
+                        
+                    } // end of load_image()
+                    
+                    
+                    $.each( current_tweet_info.image_urls, function ( index, image_url ) {
+                        load_image( index, image_url );
                     } );
                     
                 } // end of check_tweet_info()
