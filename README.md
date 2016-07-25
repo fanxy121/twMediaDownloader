@@ -10,6 +10,14 @@ Twitter メディアダウンローダ (twMediaDownloader)
 
 ■ インストール方法 
 ---
+### Chrome 拡張機能版  
+Google Chrome で、  
+
+> [Twitter メディアダウンローダ― - Chrome ウェブストア](https://chrome.google.com/webstore/detail/twitter-media-downloader/cblpjenafgeohmnjknfhpdbdljfkndig?hl=ja)  
+
+より拡張機能を追加する。  
+
+
 ### ユーザースクリプト版（Greasemonkey / Tampermonkey）
 Firefox＋[Greasemonkey](https://addons.mozilla.org/ja/firefox/addon/greasemonkey/)、Google Chrome＋[Tampermonkey](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=ja) の環境で、  
 

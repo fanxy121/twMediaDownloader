@@ -1,0 +1,29 @@
+{
+    "manifest_version" : 2
+,   "name" : "__MSG_ext_title__"
+,   "short_name" : "__MSG_ext_short_name__"
+,   "version" : "0.1.0.501"
+,   "description" : "__MSG_ext_description__"
+,   "default_locale" : "en"
+,   "icons" : {
+        "16" : "img/icon_16.png"
+    ,   "19" : "img/icon_19.png"
+    ,   "48" : "img/icon_48.png"
+    ,   "128" : "img/icon_128.png"
+    }
+,   "content_scripts" : [
+        {
+            "matches" : [ "*://twitter.com/*" ]
+        ,   "js" : [ "js/jquery.min.js", "js/jszip.min.js", "js/init.js" ]
+        ,   "run_at" : "document_start"
+        ,   "all_frames" : true
+        }
+    ,   {
+            "matches" : [ "*://twitter.com/*" ]
+        ,   "js" : [ "js/twMediaDownloader.user.js" ]
+        ,   "run_at" : "document_end"
+        ,   "all_frames" : true
+        }
+    ]
+,   "permissions": [ "*://pbs.twimg.com/*", "*://video.twimg.com/*" ]
+}

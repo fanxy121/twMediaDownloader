@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.0.4
+// @version         0.1.0.5
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.0.0/jszip.min.js
@@ -85,7 +85,8 @@ var $ = jQuery,
         catch ( error ) {
             return 'en';
         }
-    } )();
+    } )(),
+    IS_CHROME_EXTENSION = !! ( w.is_chrome_extension );
 
 switch ( LANGUAGE ) {
     case 'ja' :
@@ -998,6 +999,10 @@ var download_media_timeline = ( function () {
                     self.log( '[Stop]', min_id, '-', max_id, '( Tweet:', total_tweet_counter, '/ Image:', total_image_counter, ')' );
                     
                     save();
+                    
+                    if ( min_id ) {
+                        self.jq_until_id.val( min_id );
+                    }
                 } // end of stop()
                 
                 
@@ -1009,6 +1014,10 @@ var download_media_timeline = ( function () {
                     self.log( '[Complete' + ( is_limited  ? '(limited)' : '' ) + ']', min_id, '-', max_id, '( Tweet:', total_tweet_counter, '/ Image:', total_image_counter, ')' );
                     
                     save();
+                    
+                    if ( is_limited && min_id ) {
+                        self.jq_until_id.val( min_id );
+                    }
                 } // end of complete()
                 
                 
@@ -1127,30 +1136,59 @@ var download_media_timeline = ( function () {
                         
                         current_tweet_info.image_urls[ image_url_index ] = current_image_url;
                         
-                        GM_xmlhttpRequest( {
-                            method : 'GET'
-                        ,   url : current_image_url
-                        ,   responseType : 'arraybuffer'
-                        ,   onload : function ( response ) {
-                                if ( response.status < 200 || 300 <= response.status ) {
-                                    // 元の拡張子が png でも、png:orig が取得できない場合がある
-                                    // → gif:orig なら取得できるケース有り・ステータスチェックし、エラー時にはリトライする
-                                    var next_extension = next_extension_map[ current_extension ];
-                                    
-                                    if ( next_extension == first_extension ) {
-                                        current_tweet_info.image_urls[ image_url_index ] = first_image_url;
-                                        push_image_result( first_image_url, null, response.status + ' ' + response.statusText );
-                                        return;
-                                    }
-                                    load_image( image_url_index, first_image_url, current_image_url.replace( '.' + current_extension, '.' + next_extension ) );
+                        
+                        function onload( response ) {
+                            if ( response.status < 200 || 300 <= response.status ) {
+                                // 元の拡張子が png でも、png:orig が取得できない場合がある
+                                // → gif:orig なら取得できるケース有り・ステータスチェックし、エラー時にはリトライする
+                                var next_extension = next_extension_map[ current_extension ];
+                                
+                                if ( next_extension == first_extension ) {
+                                    current_tweet_info.image_urls[ image_url_index ] = first_image_url;
+                                    push_image_result( first_image_url, null, response.status + ' ' + response.statusText );
                                     return;
                                 }
-                                push_image_result( current_image_url, response.response );
+                                load_image( image_url_index, first_image_url, current_image_url.replace( '.' + current_extension, '.' + next_extension ) );
+                                return;
                             }
-                        ,   onerror : function ( response ) {
-                                push_image_result( current_image_url, null, response.status + ' ' + response.statusText );
-                            }
-                        } );
+                            push_image_result( current_image_url, response.response );
+                        } // end of onload()
+                        
+                        
+                        function onerror( response ) {
+                            push_image_result( current_image_url, null, response.status + ' ' + response.statusText );
+                        } // end of onerror()
+                        
+                        
+                        if ( IS_CHROME_EXTENSION || ( typeof GM_xmlhttpRequest != 'function' ) ) {
+                            var xhr = new XMLHttpRequest();
+                            
+                            xhr.open( 'GET', current_image_url, true );
+                            xhr.responseType = 'arraybuffer';
+                            xhr.onload = function () {
+                                if ( xhr.readyState != 4 ) {
+                                    return;
+                                }
+                                onload( xhr );
+                            };
+                            xhr.onerror = function () {
+                                onerror( xhr );
+                            };
+                            xhr.send();
+                        }
+                        else {
+                            GM_xmlhttpRequest( {
+                                method : 'GET'
+                            ,   url : current_image_url
+                            ,   responseType : 'arraybuffer'
+                            ,   onload : function ( response ) {
+                                    onload( response );
+                                }
+                            ,   onerror : function ( response ) {
+                                    onerror( response );
+                                }
+                            } );
+                        }
                         
                     } // end of load_image()
                     

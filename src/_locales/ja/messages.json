@@ -1,0 +1,14 @@
+{
+    "ext_title" : {
+        "message" : "Twitter メディアダウンローダ"
+    ,   "description" : "The title of the extension."
+    }
+,   "ext_short_name" : {
+        "message" : "TMDL"
+    ,   "description" : "The short version of the extension's name."
+    }
+,   "ext_description" : {
+        "message" : "Web版Twitterで、ユーザーのメディアタイムラインの原寸画像をまとめてダウンロードできます。"
+    ,   "description" : "The description of the extension."
+    }
+}

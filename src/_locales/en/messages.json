@@ -1,0 +1,14 @@
+{
+    "ext_title" : {
+        "message" : "Twitter Media Downloader"
+    ,   "description" : "The title of the extension."
+    }
+,   "ext_short_name" : {
+        "message" : "TMDL"
+    ,   "description" : "The short version of the extension's name."
+    }
+,   "ext_description" : {
+        "message" : "Download images of user's media-timeline on Twitter."
+    ,   "description" : "The description of the extension."
+    }
+}
