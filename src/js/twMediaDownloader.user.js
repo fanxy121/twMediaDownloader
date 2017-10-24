@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.0.5
+// @version         0.1.0.6
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.0.0/jszip.min.js
@@ -58,7 +58,7 @@ THE SOFTWARE.
 
 // ■ パラメータ {
 var OPTIONS = {
-    DEFAULT_LIMIT_TWEET_NUMBER : 100 // ダウンロードできる画像付きツイート数制限のデフォルト値
+    DEFAULT_LIMIT_TWEET_NUMBER : 1000 // ダウンロードできる画像付きツイート数制限のデフォルト値
 };
 
 // }
@@ -243,7 +243,11 @@ function save_blob( filename, blob ) {
 
 var download_media_timeline = ( function () {
     var TemplateMediaTimeline = {
-            DEFAULT_UNTIL_ID : '9223372036854775807' // 7fffffffffffffff = 2^63-1
+//          DEFAULT_UNTIL_ID : '9223372036854775807' // 0x7fffffffffffffff = 2^63-1
+            DEFAULT_UNTIL_ID : '999999999999999999'
+              // [2017/10/25] 最新の画像がダウンロードできなくなったので修正
+              //   922337203685477580を超えたからだと思われる→比較する際に上位から18桁分しか評価されていない？
+              //   ただし、9223372036854775808(=2^63)を指定すると一つもダウンロードできなくなるので、範囲チェックはされている模様
         
         ,   timeline_status : null // 'media' / 'search' / 'end' / 'error'
         ,   screen_name : null
@@ -264,7 +268,6 @@ var download_media_timeline = ( function () {
                 self.since_id = ( since_id ) ? since_id : null;
                 self.current_max_position = self.current_min_id = self.until_id = ( until_id ) ? until_id : self.DEFAULT_UNTIL_ID;
                 self.tweet_info_list = [];
-                
                 self.media_timeline_parameters = {
                     api_endpoint : {
                         url : 'https://twitter.com/i/profiles/show/' + self.screen_name + '/media_timeline'
@@ -743,7 +746,7 @@ var download_media_timeline = ( function () {
                     .attr( {
                     } )
                     .css( {
-                        'width' : '32px'
+                        'width' : '48px'
                     } );
                 
                 self.jq_since_id = jq_since_id = jq_range_container.find( 'input[name="since_id"]' );
