@@ -2,13 +2,15 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.0.7
+// @version         0.1.0.8
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.0.0/jszip.min.js
 // @grant           GM_xmlhttpRequest
 // @connect         twitter.com
+// @connect         api.twitter.com
 // @connect         pbs.twimg.com
+// @connect         video.twimg.com
 // @description     Download images of user's media-timeline on Twitter.
 // ==/UserScript==
 
@@ -243,6 +245,11 @@ function get_tweet_id( url ) {
     
     return RegExp.$1;
 } // end of get_tweet_id()
+
+
+function datetime_to_timestamp( datetime ) {
+    return datetime.replace( /[\/:]/g, '' ).replace( / /g, '_' )
+} // end of datetime_to_timestamp()
 
 
 function save_blob( filename, blob ) {
@@ -955,7 +962,7 @@ var download_media_timeline = ( function () {
                 var self = this,
                     jq_log = self.jq_log,
                     text = to_array( arguments ).join( ' ' ) + '\n',
-                    html = text.replace( /(https?:\/\/[\w\/:%#$&?\(\)~.=+\-]+)/g, '<a href="$1" target="blank">$1</a>' )
+                    html = text.replace( /(https?:\/\/[\w\/:%#$&?\(\)~.=+\-]+)/g, '<a href="$1" target="blank">$1</a>' ),
                     jq_paragraph;
                 
                 if ( ! jq_log ) {
@@ -1053,6 +1060,8 @@ var download_media_timeline = ( function () {
                     until_id = get_tweet_id( self.jq_until_id.val() ),
                     max_id = '',
                     min_id = '',
+                    max_datetime = '',
+                    min_datetime = '',
                     total_tweet_counter = 0,
                     total_image_counter = 0,
                     MediaTimeline = object_extender( TemplateMediaTimeline ).init( screen_name, until_id, since_id ),
@@ -1152,7 +1161,7 @@ var download_media_timeline = ( function () {
                         return;
                     }
                     
-                    var filename_prefix = [ screen_name, min_id, max_id, 'media' ].join( '-' );
+                    var filename_prefix = [ screen_name, ( min_id + '(' + datetime_to_timestamp( min_datetime ) + ')' ), ( max_id + '(' + datetime_to_timestamp( max_datetime ) + ')' ), 'media' ].join( '-' );
                     
                     zip.file( filename_prefix + '.log', self.jq_log.text() );
                     
@@ -1218,10 +1227,12 @@ var download_media_timeline = ( function () {
                         
                         if ( ( ! max_id ) || ( max_id < current_tweet_id ) ) {
                             max_id = current_tweet_id;
+                            max_datetime = current_tweet_info.datetime;
                         }
                         
                         if ( ( ! min_id ) || ( current_tweet_id < min_id ) ) {
                             min_id = current_tweet_id;
+                            min_datetime = current_tweet_info.datetime;
                         }
                         
                         total_tweet_counter ++;
@@ -1236,7 +1247,7 @@ var download_media_timeline = ( function () {
                             if ( image_result.arraybuffer ) {
                                 report_index ++;
                                 
-                                var timestamp = current_tweet_info.datetime.replace( /[\/:]/g, '' ).replace( / /g, '_' ),
+                                var timestamp = datetime_to_timestamp( current_tweet_info.datetime ),
                                     image_filename = [ screen_name, current_tweet_id, timestamp, media_prefix + report_index ].join( '-' ) + '.' + img_extension;
                                 
                                 self.log( '  ' + media_prefix + report_index + ')', image_url );

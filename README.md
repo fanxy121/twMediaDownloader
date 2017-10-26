@@ -5,7 +5,7 @@ Twitter メディアダウンローダ (twMediaDownloader)
 - Copyright (c) 2016 風柳(furyu)  
 - 対象ブラウザ： Google Chrome、Firefox
 
-[Web 版公式 Twitter](https://twitter.com/) の、ユーザーのメディアタイムライン上の画像を、原寸サイズでまとめてダウンロードするためのスクリプト。  
+[Web 版公式 Twitter](https://twitter.com/) の、ユーザーのメディアタイムライン上の画像/動画を、原寸サイズでまとめてダウンロードするためのスクリプト。  
 
 
 ■ インストール方法 
@@ -31,11 +31,11 @@ Firefox＋[Greasemonkey](https://addons.mozilla.org/ja/firefox/addon/greasemonke
 [Web 版公式 Twitter](https://twitter.com/) 上で、ユーザータイムラインを開くと、「メディア」の右に下向き矢印のリンクが挿入される。  
 ![下向き矢印のリンク](https://cdn-ak.f.st-hatena.com/images/fotolife/f/furyu-tei/20160723/20160723224518.jpg)  
 
-これをクリックするとダイアログが表示されるので、[開始]ボタンをクリックすると、原寸画像の ZIP 化が開始される。  
+これをクリックするとダイアログが表示されるので、[開始]ボタンをクリックすると、原寸画像/動画の ZIP 化が開始される。  
 ※ ZIP 化の進捗は、下部にログ出力される。  
 ![ダイアログ](https://cdn-ak.f.st-hatena.com/images/fotolife/f/furyu-tei/20160723/20160723224527.jpg)  
 
-ZIP 化が完了するか、もしくは[停止]を押すと、対象となる画像ファイルをまとめた ZIP ファイルがダウンロードされる。  
+ZIP 化が完了するか、もしくは[停止]を押すと、対象となる画像/動画ファイルをまとめた ZIP ファイルがダウンロードされる。  
 ※ ログの内容も ZIP の中に保存される。
 
 必要に応じて、保存対象となるツイートの Tweet ID 範囲、および、ツイートの制限数を指定可能。  
