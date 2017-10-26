@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.0.6
+// @version         0.1.0.7
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.0.0/jszip.min.js
@@ -59,6 +59,9 @@ THE SOFTWARE.
 // ■ パラメータ {
 var OPTIONS = {
     DEFAULT_LIMIT_TWEET_NUMBER : 1000 // ダウンロードできる画像付きツイート数制限のデフォルト値
+,   DEFAULT_SUPPORT_IMAGE : true // true: 画像をダウンロード対象にする
+,   DEFAULT_SUPPORT_GIF : true // true: アニメーションGIF（から変換された動画）をダウンロード対象にする
+,   DEFAULT_SUPPORT_VIDEO : true // true: 動画をダウンロード対象にする（未サポート）
 };
 
 // }
@@ -86,7 +89,17 @@ var $ = jQuery,
             return 'en';
         }
     } )(),
-    IS_CHROME_EXTENSION = !! ( w.is_chrome_extension );
+    IS_CHROME_EXTENSION = !! ( w.is_chrome_extension ),
+    
+    OAUTH2_TOKEN_API_URL = 'https://api.twitter.com/oauth2/token',
+    ENCODED_TOKEN_CREDENTIAL = 'VGdITk1hN1daRTdDeGkxSmJrQU1ROlNIeTltQk1CUE5qM1kxN2V0OUJGNGc1WGVxUzR5M3ZrZVcyNFB0dERjWQ==',
+    
+    oauth2_access_token = null,
+    limit_tweet_number = OPTIONS.DEFAULT_LIMIT_TWEET_NUMBER,
+    support_image = false,
+    support_gif = false,
+    support_video = false;
+
 
 switch ( LANGUAGE ) {
     case 'ja' :
@@ -98,6 +111,9 @@ switch ( LANGUAGE ) {
         OPTIONS.DIALOG_BUTTON_START_TEXT = '開始';
         OPTIONS.DIALOG_BUTTON_STOP_TEXT = '停止';
         OPTIONS.DIALOG_BUTTON_CLOSE_TEXT = '閉じる';
+        OPTIONS.CHECKBOX_IMAGE_TEXT = '画像';
+        OPTIONS.CHECKBOX_GIF_TEXT = '動画(GIF)';
+        OPTIONS.CHECKBOX_VIDEO_TEXT = '動画';
         break;
     default:
         OPTIONS.DOWNLOAD_BUTTON_TEXT = '⇩';
@@ -108,6 +124,9 @@ switch ( LANGUAGE ) {
         OPTIONS.DIALOG_BUTTON_START_TEXT = 'Start';
         OPTIONS.DIALOG_BUTTON_STOP_TEXT = 'Stop';
         OPTIONS.DIALOG_BUTTON_CLOSE_TEXT = 'Close';
+        OPTIONS.CHECKBOX_IMAGE_TEXT = 'Images';
+        OPTIONS.CHECKBOX_GIF_TEXT = 'Videos(GIF)';
+        OPTIONS.CHECKBOX_VIDEO_TEXT = 'Videos';
         break;
 }
 
@@ -264,6 +283,7 @@ var download_media_timeline = ( function () {
                 var self = this;
                 
                 self.timeline_status = 'media';
+                //self.timeline_status = 'search'; // ※テスト用
                 self.screen_name = screen_name;
                 self.since_id = ( since_id ) ? since_id : null;
                 self.current_max_position = self.current_min_id = self.until_id = ( until_id ) ? until_id : self.DEFAULT_UNTIL_ID;
@@ -370,7 +390,7 @@ var download_media_timeline = ( function () {
             } // end of _get_last_note_ts()
         
         ,   _get_tweet_info : function ( jq_tweet ) {
-                var tweet_info = {},
+                var tweet_info = { media_type : null },
                     tweet_url,
                     timestamp_ms,
                     image_urls = [];
@@ -385,10 +405,33 @@ var download_media_timeline = ( function () {
                 tweet_info.datetime = ( timestamp_ms ) ? format_date( new Date( parseInt( timestamp_ms, 10 ) ), 'YYYY/MM/DD hh:mm:ss' ) : '';
                 tweet_info.tweet_text = jq_tweet.find( '.js-tweet-text, .tweet-text' ).text();
                 
-                jq_tweet.find( '.AdaptiveMedia-photoContainer img' ).each( function () {
-                    image_urls.push( get_img_url_orig( $( this ).attr( 'src' ) ) );
-                } );
-                
+                if ( support_image ) {
+                    jq_tweet.find( '.AdaptiveMedia-photoContainer img' ).each( function () {
+                        image_urls.push( get_img_url_orig( $( this ).attr( 'src' ) ) );
+                    } );
+                }
+                if ( 0 < image_urls.length ) {
+                    tweet_info.media_type = 'image';
+                }
+                else if ( oauth2_access_token ) {
+                    jq_tweet.find( '.AdaptiveMedia-videoContainer .PlayableMedia' ).each( function () {
+                        if ( $( this ).hasClass( 'PlayableMedia--gif' ) ) {
+                            if ( ! support_gif ) {
+                                return;
+                            }
+                            image_urls.push( 'https://api.twitter.com/1.1/videos/tweet/config/#TWEETID#.json'.replace( '#TWEETID#', tweet_info.tweet_id ) );
+                            tweet_info.media_type = 'gif';
+                        }
+                        else {
+                            if ( ! support_video ) {
+                                return;
+                            }
+                            image_urls.push( 'https://api.twitter.com/1.1/statuses/show.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_reply_count=1&tweet_mode=extended&trim_user=false&include_ext_media_color=true&id=#TWEETID#'.replace( '#TWEETID#', tweet_info.tweet_id ) );
+                            tweet_info.media_type = 'video';
+                        }
+                        return false; // video は現状では 1 つのみサポート
+                    } );
+                }
                 tweet_info.image_urls = image_urls;
                 
                 return tweet_info;
@@ -411,7 +454,7 @@ var download_media_timeline = ( function () {
                     $( '<div/>' ).html( json.items_html ).find( '.js-stream-item' ).each( function () {
                         var tweet_info = self._get_tweet_info( $( this ) );
                         
-                        if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) || ( tweet_info.image_urls.length <= 0 ) ) {
+                        if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) || ( ! tweet_info.media_type ) ) {
                             return;
                         }
                         tweet_info_list.push( tweet_info );
@@ -437,7 +480,7 @@ var download_media_timeline = ( function () {
                     }
                 } )
                 .error( function ( jqXHR, textStatus, errorThrown ) {
-                    console.error( textStatus, jqXHR.status, jqXHR.statusText );
+                    console.error( api_endpoint.url, textStatus );
                     self.timeline_status = 'error';
                 } )
                 .complete( function () {
@@ -453,10 +496,11 @@ var download_media_timeline = ( function () {
                     api_data = api_endpoint.data;
                 
                 if ( self.search_timeline_parameters.is_first ) {
-                    html_data.q = 'filter:images exclude:retweets from:' + self.screen_name + ' max_id:' + self.current_max_position;
+                    html_data.q = 'exclude:retweets from:' + self.screen_name + ' max_id:' + self.current_max_position;
                     if ( self.since_id ) {
                         html_data.q += ' since_id:'+ self.since_id;
                     }
+                    html_data.q += ' filter:images OR filter:videos';
                     
                     $.ajax( {
                         type : 'GET'
@@ -475,7 +519,7 @@ var download_media_timeline = ( function () {
                             jq_result.find( '.js-stream-item' ).each( function () {
                                 var tweet_info = self._get_tweet_info( $( this ) );
                                 
-                                if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) || ( tweet_info.image_urls.length <= 0 ) ) {
+                                if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) || ( ! tweet_info.media_type ) ) {
                                     return;
                                 }
                                 tweet_info_list.push( tweet_info );
@@ -488,7 +532,7 @@ var download_media_timeline = ( function () {
                         }
                     } )
                     .error( function ( jqXHR, textStatus, errorThrown ) {
-                        console.error( textStatus, jqXHR.status, jqXHR.statusText );
+                        console.error( html_endpoint.url, textStatus );
                         self.timeline_status = 'error';
                     } )
                     .complete( function () {
@@ -518,7 +562,7 @@ var download_media_timeline = ( function () {
                     $( '<div/>' ).html( json.inner.items_html ).find( '.js-stream-item' ).each( function () {
                         var tweet_info = self._get_tweet_info( $( this ) );
                         
-                        if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) || ( tweet_info.image_urls.length <= 0 ) ) {
+                        if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) || ( ! tweet_info.media_type ) ) {
                             return;
                         }
                         tweet_info_list.push( tweet_info );
@@ -545,7 +589,7 @@ var download_media_timeline = ( function () {
                     */
                 } )
                 .error( function ( jqXHR, textStatus, errorThrown ) {
-                    console.error( textStatus, jqXHR.status, jqXHR.statusText );
+                    console.error( api_endpoint.url, textStatus );
                     self.timeline_status = 'error';
                 } )
                 .complete( function () {
@@ -592,9 +636,58 @@ var download_media_timeline = ( function () {
                     jq_button_stop,
                     jq_button_close,
                     jq_status_container,
+                    jq_checkbox_container,
+                    jq_checkbox_image,
+                    jq_checkbox_gif,
+                    jq_checkbox_video,
                     jq_log;
                 
                 $( '#' + container_id ).remove();
+                
+                self.jq_checkbox_image = jq_checkbox_image = $( '<label><input type="checkbox" name="image">' + OPTIONS.CHECKBOX_IMAGE_TEXT + '</label>' )
+                    .addClass( SCRIPT_NAME + '_checkbox_image' )
+                jq_checkbox_image
+                    .find( 'input' )
+                    .prop( 'checked', support_image )
+                    .change( function ( event ) {
+                        var jq_input = $( this );
+                        
+                        event.stopPropagation();
+                        event.preventDefault();
+                        
+                        support_image = jq_input.is( ':checked' );
+                        localStorage[ SCRIPT_NAME + '_support_image' ] = ( support_image ) ? '1' : '0';
+                    } );
+                
+                self.jq_checkbox_gif = jq_checkbox_gif = $( '<label><input type="checkbox" name="gif">' + OPTIONS.CHECKBOX_GIF_TEXT + '</label>' )
+                    .addClass( SCRIPT_NAME + '_checkbox_gif' );
+                jq_checkbox_gif
+                    .find( 'input' )
+                    .prop( 'checked', support_gif )
+                    .change( function ( event ) {
+                        var jq_input = $( this );
+                        
+                        event.stopPropagation();
+                        event.preventDefault();
+                        
+                        support_gif = jq_input.is( ':checked' );
+                        localStorage[ SCRIPT_NAME + '_support_gif' ] = ( support_gif ) ? '1' : '0';
+                    } );
+                
+                self.jq_checkbox_video = jq_checkbox_video = $( '<label><input type="checkbox" name="video">' + OPTIONS.CHECKBOX_VIDEO_TEXT + '</label>' )
+                    .addClass( SCRIPT_NAME + '_checkbox_video' );
+                jq_checkbox_video
+                    .find( 'input' )
+                    .prop( 'checked', support_video )
+                    .change( function ( event ) {
+                        var jq_input = $( this );
+                        
+                        event.stopPropagation();
+                        event.preventDefault();
+                        
+                        support_video = jq_input.is( ':checked' );
+                        localStorage[ SCRIPT_NAME + '_support_video' ] = ( support_video ) ? '1' : '0';
+                    } );
                 
                 self.jq_button_start = jq_button_start = $( '<button />' )
                     .text( OPTIONS.DIALOG_BUTTON_START_TEXT )
@@ -753,17 +846,26 @@ var download_media_timeline = ( function () {
                 self.jq_until_id = jq_until_id = jq_range_container.find( 'input[name="until_id"]' );
                 self.jq_limit_tweet_number = jq_limit_tweet_number = jq_range_container.find( 'input[name="limit"]' );
                 
-                if ( OPTIONS.DEFAULT_LIMIT_TWEET_NUMBER ) {
-                    jq_limit_tweet_number.val( OPTIONS.DEFAULT_LIMIT_TWEET_NUMBER );
-                }
+                jq_limit_tweet_number.val( limit_tweet_number );
                 
-                jq_botton_container = $( '<ul />' )
+                jq_checkbox_container = $( '<div />' )
+                    .addClass( SCRIPT_NAME + '_checkbox_container' )
+                    .attr( {
+                    } )
+                    .css( {
+                        'position' : 'relative'
+                    ,   'left' : '-50%'
+                    ,   'float' : 'left'
+                    ,   'margin' : '16px 0 0 0'
+                    } );
+                
+                jq_botton_container = $( '<div />' )
                     .addClass( SCRIPT_NAME + '_button_container' )
                     .attr( {
                     } )
                     .css( {
                         'position' : 'relative'
-                    ,   'left' : '50%'
+                    ,   'left' : ( oauth2_access_token ) ? '60%' : '50%'
                     ,   'float' : 'left'
                     ,   'margin' : '16px 0 0 0'
                     } );
@@ -797,7 +899,23 @@ var download_media_timeline = ( function () {
                     ,   'background' : 'snow'
                     } );
                 
-                //jq_botton_container.append( jq_button_start ).append( jq_button_stop ).append( jq_button_close ).find( 'button' )
+                jq_checkbox_container.append( jq_checkbox_image ).append( jq_checkbox_gif ).append( jq_checkbox_video ).find( 'label' )
+                    .css( {
+                        'display' : 'inline-block'
+                    ,   'width' : '100px'
+                    ,   'margin-right' : '8px'
+                    ,   'vertical-align' : 'top'
+                    ,   'color' : '#14171a'
+                    ,   'font-size' : '12px'
+                    } );
+                jq_checkbox_container.find( 'input' )
+                    .css( {
+                        'margin-right' : '4px'
+                    } );
+                
+                if ( oauth2_access_token ) {
+                    jq_botton_container.append( jq_checkbox_container );
+                }
                 jq_botton_container.append( jq_button_start ).append( jq_button_stop ).find( 'button' )
                     .addClass( 'btn' )
                     .css( {
@@ -837,7 +955,7 @@ var download_media_timeline = ( function () {
                 var self = this,
                     jq_log = self.jq_log,
                     text = to_array( arguments ).join( ' ' ) + '\n',
-                    html = text.replace( /(https?:\/\/[\w\-.:\/]+)/g, '<a href="$1" target="blank">$1</a>' ),
+                    html = text.replace( /(https?:\/\/[\w\/:%#$&?\(\)~.=+\-]+)/g, '<a href="$1" target="blank">$1</a>' )
                     jq_paragraph;
                 
                 if ( ! jq_log ) {
@@ -848,6 +966,7 @@ var download_media_timeline = ( function () {
                     .html( html )
                     .css( {
                         'font-size' : '12px'
+                    ,   'overflow': 'visible'
                     } );
                 
                 jq_log.append( jq_paragraph );
@@ -932,14 +1051,18 @@ var download_media_timeline = ( function () {
                     screen_name = get_screen_name(),
                     since_id = get_tweet_id( self.jq_since_id.val() ),
                     until_id = get_tweet_id( self.jq_until_id.val() ),
-                    limit_tweet_number = parseInt( self.jq_limit_tweet_number.val().trim(), 10 ),
-                    limit_tweet_number = isNaN( limit_tweet_number ) ? null : limit_tweet_number,
                     max_id = '',
                     min_id = '',
                     total_tweet_counter = 0,
                     total_image_counter = 0,
                     MediaTimeline = object_extender( TemplateMediaTimeline ).init( screen_name, until_id, since_id ),
                     zip;
+                
+                limit_tweet_number = parseInt( self.jq_limit_tweet_number.val().trim(), 10 );
+                if ( isNaN( limit_tweet_number ) ) {
+                    limit_tweet_number = 0;
+                }
+                localStorage[ SCRIPT_NAME + '_limit_tweet_number' ] = String( limit_tweet_number );
                 
                 if ( self.downloading ) {
                     return self;
@@ -999,7 +1122,7 @@ var download_media_timeline = ( function () {
                 
                 function stop() {
                     self.log_hr();
-                    self.log( '[Stop]', min_id, '-', max_id, '( Tweet:', total_tweet_counter, '/ Image:', total_image_counter, ')' );
+                    self.log( '[Stop]', min_id, '-', max_id, ' ( Tweet:', total_tweet_counter, '/ Media:', total_image_counter, ')' );
                     
                     save();
                     
@@ -1014,7 +1137,7 @@ var download_media_timeline = ( function () {
                     
                     var is_limited = !! ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) );
                     
-                    self.log( '[Complete' + ( is_limited  ? '(limited)' : '' ) + ']', min_id, '-', max_id, '( Tweet:', total_tweet_counter, '/ Image:', total_image_counter, ')' );
+                    self.log( '[Complete' + ( is_limited  ? '(limited)' : '' ) + ']', min_id, '-', max_id, ' ( Tweet:', total_tweet_counter, '/ Media:', total_image_counter, ')' );
                     
                     save();
                     
@@ -1029,7 +1152,7 @@ var download_media_timeline = ( function () {
                         return;
                     }
                     
-                    var filename_prefix = [ screen_name, min_id, max_id, 'images' ].join( '-' );
+                    var filename_prefix = [ screen_name, min_id, max_id, 'media' ].join( '-' );
                     
                     zip.file( filename_prefix + '.log', self.jq_log.text() );
                     
@@ -1090,7 +1213,8 @@ var download_media_timeline = ( function () {
                             return;
                         }
                         
-                        var current_tweet_id = current_tweet_info.tweet_id;
+                        var current_tweet_id = current_tweet_info.tweet_id,
+                            report_index = 0;
                         
                         if ( ( ! max_id ) || ( max_id < current_tweet_id ) ) {
                             max_id = current_tweet_id;
@@ -1104,12 +1228,18 @@ var download_media_timeline = ( function () {
                         total_image_counter += current_image_download_counter;
                         
                         $.each( current_tweet_info.image_urls, function ( index, image_url ) {
-                            var image_result = current_image_result_map[ image_url ];
+                            var image_result = current_image_result_map[ image_url ],
+                                media_type = current_tweet_info.media_type,
+                                img_extension = ( media_type == 'image' ) ? get_img_extension( image_url ) : image_url.match( /[^\.]*$/ )[0],
+                                media_prefix = ( media_type == 'gif' ) ? 'gif' : ( ( media_type == 'image' ) ? 'img' : 'vid' );
                             
                             if ( image_result.arraybuffer ) {
-                                self.log( '  img' + ( 1 + index ) + ')', image_url );
+                                report_index ++;
                                 
-                                var image_filename = [ screen_name, current_tweet_id, 'img' + ( 1 + index ) ].join( '-' ) + '.' + get_img_extension( image_url );
+                                var timestamp = current_tweet_info.datetime.replace( /[\/:]/g, '' ).replace( / /g, '_' ),
+                                    image_filename = [ screen_name, current_tweet_id, timestamp, media_prefix + report_index ].join( '-' ) + '.' + img_extension;
+                                
+                                self.log( '  ' + media_prefix + report_index + ')', image_url );
                                 
                                 zip.file( image_filename, image_result.arraybuffer );
                                 
@@ -1117,7 +1247,8 @@ var download_media_timeline = ( function () {
                                 image_result.arraybuffer = null;
                             }
                             else {
-                                self.log( '  img' + ( 1 + index ) + ')', image_url, '=>', image_result.error_message );
+                                report_index ++;
+                                self.log( '  ' + media_prefix + report_index + ')', image_url, '=>', image_result.error_message );
                             }
                         } );
                         
@@ -1196,10 +1327,91 @@ var download_media_timeline = ( function () {
                     } // end of load_image()
                     
                     
-                    $.each( current_tweet_info.image_urls, function ( index, image_url ) {
-                        load_image( index, image_url );
-                    } );
-                    
+                    if ( current_tweet_info.media_type == 'image' ) {
+                        $.each( current_tweet_info.image_urls, function ( index, image_url ) {
+                            load_image( index, image_url );
+                        } );
+                    }
+                    else if ( current_tweet_info.media_type == 'gif' ) {
+                        $.each( current_tweet_info.image_urls, function ( index, video_info_url ) {
+                            $.ajax( {
+                                type : 'GET'
+                            ,   url : video_info_url
+                            ,   dataType : 'json'
+                            ,   headers : {
+                                    'Authorization' : 'Bearer ' + oauth2_access_token
+                                }
+                            } )
+                            .success( function ( json ) {
+                                var video_url = json.track.playbackUrl;
+                                
+                                current_tweet_info.image_urls[ index ] = video_url;
+                                current_tweet_info.video_info = json.track;
+                                
+                                if ( /\.mp4$/.test( video_url ) ) {
+                                    load_image( index, video_url );
+                                }
+                                else {
+                                    push_image_result( video_url, null, 'not supported' );
+                                }
+                            } )
+                            .error( function ( jqXHR, textStatus, errorThrown ) {
+                                console.error( video_info_url, textStatus );
+                                push_image_result( video_info_url, null, textStatus );
+                            } )
+                            .complete( function () {
+                            } );
+                        } );
+                    }
+                    else {
+                        $.each( current_tweet_info.image_urls, function ( index, tweet_info_url ) {
+                            $.ajax( {
+                                type : 'GET'
+                            ,   url : tweet_info_url
+                            ,   dataType : 'json'
+                            ,   headers : {
+                                    'Authorization' : 'Bearer ' + oauth2_access_token
+                                }
+                            } )
+                            .success( function ( json ) {
+                                var video_info = null,
+                                    video_url = null,
+                                    variants = [],
+                                    max_bitrate = -1;
+                                
+                                try {
+                                    video_info = json.extended_entities.media[ 0 ].video_info;
+                                    variants = video_info.variants;
+                                    
+                                    variants.forEach( function ( variant ) {
+                                        if ( ( variant.content_type == 'video/mp4' ) && ( variant.bitrate ) && ( max_bitrate < variant.bitrate ) ) {
+                                            video_url = variant.url;
+                                            max_bitrate = variant.bitrate;
+                                        }
+                                    } );
+                                }
+                                catch ( error ) {
+                                    console.error( tweet_info_url, error );
+                                }
+                                
+                                current_tweet_info.video_info = video_info;
+                                
+                                if ( video_url ) {
+                                    current_tweet_info.image_urls[ index ] = video_url;
+                                    load_image( index, video_url );
+                                }
+                                else {
+                                    push_image_result( tweet_info_url, null, 'not supported' );
+                                }
+                            } )
+                            .error( function ( jqXHR, textStatus, errorThrown ) {
+                                console.error( tweet_info_url, textStatus );
+                                push_image_result( tweet_info_url, null, textStatus );
+                            } )
+                            .complete( function () {
+                            } );
+                        } );
+                    }
                 } // end of check_tweet_info()
                 
                 MediaTimeline.fetch_tweet_info( check_tweet_info );
@@ -1321,9 +1533,71 @@ function start_mutation_observer() {
 
 
 function initialize() {
-    insert_download_button();
+    if ( ( localStorage[ SCRIPT_NAME + '_limit_tweet_number' ] !== undefined ) && ( ! isNaN( localStorage[ SCRIPT_NAME + '_limit_tweet_number' ] ) ) ) {
+        limit_tweet_number = parseInt( localStorage[ SCRIPT_NAME + '_limit_tweet_number' ], 10 );
+    }
+    else {
+        limit_tweet_number = OPTIONS.DEFAULT_LIMIT_TWEET_NUMBER;
+        localStorage[ SCRIPT_NAME + '_limit_tweet_number' ] = String( limit_tweet_number );
+    }
     
-    start_mutation_observer();
+    if ( localStorage[ SCRIPT_NAME + '_support_image' ] !== undefined ) {
+        support_image = ( localStorage[ SCRIPT_NAME + '_support_image' ] !== '0' );
+    }
+    else {
+        support_image = OPTIONS.DEFAULT_SUPPORT_IMAGE;
+        localStorage[ SCRIPT_NAME + '_support_image' ] = ( support_image ) ? '1' : '0';
+    }
+
+    if ( localStorage[ SCRIPT_NAME + '_support_gif' ] !== undefined ) {
+        support_gif = ( localStorage[ SCRIPT_NAME + '_support_gif' ] !== '0' );
+    }
+    else {
+        support_gif = OPTIONS.DEFAULT_SUPPORT_GIF;
+        localStorage[ SCRIPT_NAME + '_support_gif' ] = ( support_gif ) ? '1' : '0';
+    }
+    
+    if ( localStorage[ SCRIPT_NAME + '_support_video' ] !== undefined ) {
+        support_video = ( localStorage[ SCRIPT_NAME + '_support_video' ] !== '0' );
+    }
+    else {
+        support_video = OPTIONS.DEFAULT_SUPPORT_VIDEO;
+        localStorage[ SCRIPT_NAME + '_support_video' ] = ( support_video ) ? '1' : '0';
+    }
+    
+    $.ajax( {
+        type : 'POST'
+    ,   url : OAUTH2_TOKEN_API_URL
+    ,   headers : {
+            'Authorization' : 'Basic '+ ENCODED_TOKEN_CREDENTIAL
+        ,   'Content-Type' : 'application/x-www-form-urlencoded;charset=UTF-8'
+        }
+    ,   data : {
+            'grant_type' : 'client_credentials'
+        }
+    ,   dataType : 'json'
+    ,   xhrFields : {
+            withCredentials : false // Cross-Origin Resource Sharing(CORS)用設定
+            // TODO: Chrome 拡張機能だと false であっても Cookie が送信されてしまう
+            // → webRequest を有効にして、background.js でリクエストヘッダから Cookie を取り除くようにして対応
+        }
+    } )
+    .success( function ( json ) {
+        oauth2_access_token = json.access_token;
+    } )
+    .error( function ( jqXHR, textStatus, errorThrown ) {
+        console.error( OAUTH2_TOKEN_API_URL, textStatus );
+        // TODO: Cookies 中に auth_token が含まれていると、403 (code:99)が返ってきてしまう
+        // → auth_token は Twitter ログイン中保持されるため、Cookies を送らないようにする対策が取れない場合、対応は困難
+        oauth2_access_token = null;
+        support_image = true;
+        support_gif = false;
+        support_video = false;
+    } )
+    .complete( function () {
+        insert_download_button();
+        start_mutation_observer();
+    } );
     
 } // end of initialize()
 

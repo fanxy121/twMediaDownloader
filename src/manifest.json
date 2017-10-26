@@ -2,7 +2,7 @@
     "manifest_version" : 2
 ,   "name" : "__MSG_ext_title__"
 ,   "short_name" : "__MSG_ext_short_name__"
-,   "version" : "0.1.0.601"
+,   "version" : "0.1.0.701"
 ,   "description" : "__MSG_ext_description__"
 ,   "default_locale" : "en"
 ,   "icons" : {
@@ -11,6 +11,7 @@
     ,   "48" : "img/icon_48.png"
     ,   "128" : "img/icon_128.png"
     }
+,   "permissions": [ "webRequest", "webRequestBlocking", "*://*.twitter.com/*", "*://pbs.twimg.com/*", "*://video.twimg.com/*" ]
 ,   "content_scripts" : [
         {
             "matches" : [ "*://twitter.com/*" ]
@@ -25,5 +26,8 @@
         ,   "all_frames" : true
         }
     ]
-,   "permissions": [ "*://pbs.twimg.com/*", "*://video.twimg.com/*" ]
+,   "background": {
+        "scripts" : [ "js/background.js" ]
+    ,   "persistent" : true
+    }
 }
