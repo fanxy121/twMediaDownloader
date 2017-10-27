@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.0.8
+// @version         0.1.0.9
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.0.0/jszip.min.js
@@ -116,6 +116,7 @@ switch ( LANGUAGE ) {
         OPTIONS.CHECKBOX_IMAGE_TEXT = '画像';
         OPTIONS.CHECKBOX_GIF_TEXT = '動画(GIF)';
         OPTIONS.CHECKBOX_VIDEO_TEXT = '動画';
+        OPTIONS.CHECKBOX_ALERT = '最低でも一つはチェックを入れて下さい';
         break;
     default:
         OPTIONS.DOWNLOAD_BUTTON_TEXT = '⇩';
@@ -129,6 +130,7 @@ switch ( LANGUAGE ) {
         OPTIONS.CHECKBOX_IMAGE_TEXT = 'Images';
         OPTIONS.CHECKBOX_GIF_TEXT = 'Videos(GIF)';
         OPTIONS.CHECKBOX_VIDEO_TEXT = 'Videos';
+        OPTIONS.CHECKBOX_ALERT = 'Please select at least one checkbox !';
         break;
 }
 
@@ -703,6 +705,10 @@ var download_media_timeline = ( function () {
                         event.stopPropagation();
                         event.preventDefault();
                         
+                        if ( jq_checkbox_container.find( 'input[type=checkbox]:checked' ).length <= 0 ) {
+                            alert( OPTIONS.CHECKBOX_ALERT );
+                            return;
+                        }
                         self.on_start( event );
                     } );
                 
@@ -1011,9 +1017,9 @@ var download_media_timeline = ( function () {
                     return self;
                 }
                 
-                self.jq_button_start.removeAttr( 'disabled' );
-                self.jq_button_stop.attr( 'disabled', 'disabled' );
-                self.jq_button_close.removeAttr( 'disabled' );
+                self.jq_button_start.prop( 'disabled', false );
+                self.jq_button_stop.prop( 'disabled', true );
+                self.jq_button_close.prop( 'disabled', false );
                 
                 return self;
             } // end of reset_flags()
@@ -1435,8 +1441,8 @@ var download_media_timeline = ( function () {
                 
                 self.clear_log();
                 
-                self.jq_button_start.attr( 'disabled', 'disabled' );
-                self.jq_button_stop.removeAttr( 'disabled' );
+                self.jq_button_start.prop( 'disabled', true );
+                self.jq_button_stop.prop( 'disabled', false );
                 
                 self.start_download();
                 
@@ -1446,7 +1452,7 @@ var download_media_timeline = ( function () {
         ,   on_stop : function ( event ) {
                 var self = this;
                 
-                self.jq_button_stop.attr( 'disabled', 'disabled' );
+                self.jq_button_stop.prop( 'disabled', true );
                 self.stopping = true;
                 
                 return self;
@@ -1455,8 +1461,8 @@ var download_media_timeline = ( function () {
         ,   on_close : function ( event ) {
                 var self = this;
                 
-                self.jq_button_start.attr( 'disabled', 'disabled' );
-                self.jq_button_stop.attr( 'disabled', 'disabled' );
+                self.jq_button_start.prop( 'disabled', true );
+                self.jq_button_stop.prop( 'disabled', true );
                 
                 if ( self.downloading ) {
                     self.closing = true;
