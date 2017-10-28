@@ -2,11 +2,13 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.0.9
+// @version         0.1.0.10
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.0.0/jszip.min.js
 // @grant           GM_xmlhttpRequest
+// @grant           GM_setValue
+// @grant           GM_getValue
 // @connect         twitter.com
 // @connect         api.twitter.com
 // @connect         pbs.twimg.com
@@ -60,7 +62,7 @@ THE SOFTWARE.
 
 // ■ パラメータ {
 var OPTIONS = {
-    DEFAULT_LIMIT_TWEET_NUMBER : 1000 // ダウンロードできる画像付きツイート数制限のデフォルト値
+    DEFAULT_LIMIT_TWEET_NUMBER : 100 // ダウンロードできる画像付きツイート数制限のデフォルト値
 ,   DEFAULT_SUPPORT_IMAGE : true // true: 画像をダウンロード対象にする
 ,   DEFAULT_SUPPORT_GIF : true // true: アニメーションGIF（から変換された動画）をダウンロード対象にする
 ,   DEFAULT_SUPPORT_VIDEO : true // true: 動画をダウンロード対象にする（未サポート）
@@ -276,6 +278,30 @@ function save_blob( filename, blob ) {
 } // end of save_blob()
 
 
+var set_value = ( function () {
+    if ( typeof GM_setValue != 'undefined' ) {
+        return function ( name, value ) {
+            return GM_setValue( name, value );
+        };
+    }
+    return function ( name, value ) {
+        return localStorage.setItem( name, value );
+    };
+} )(); // end of set_value()
+
+
+var get_value = ( function () {
+    if ( typeof GM_getValue != 'undefined' ) {
+        return function ( name ) {
+            return GM_getValue( name );
+        };
+    }
+    return function ( name ) {
+        return localStorage.getItem( name );
+    };
+} )(); // end of get_value()
+
+
 var download_media_timeline = ( function () {
     var TemplateMediaTimeline = {
 //          DEFAULT_UNTIL_ID : '9223372036854775807' // 0x7fffffffffffffff = 2^63-1
@@ -304,7 +330,11 @@ var download_media_timeline = ( function () {
                 self.timeline_status = ( is_search_timeline ) ? 'search' : 'media';
                 //self.timeline_status = 'search'; // ※テスト用
                 self.screen_name = screen_name;
-                self.search_query = ( is_search_timeline ) ? $( '#search-query' ).val().replace( /filter:(?:images|videos)/g, '' ) : null;
+                self.search_query = ( is_search_timeline ) ?
+                    $( '#search-query' ).val().replace( /-?(?:filter:(?:images|videos|native_video|media|vine|periscope)|card_name:animated_gif)(?:\s+OR\s+)?/g, ' ' ).replace( /\s+/g, ' ' ).trim() :
+                    // 本スクリプトと競合するフィルタの類は削除しておく
+                    null;
+                
                 if ( is_search_timeline && ( ! self.search_query ) ) {
                     self.search_query = 'twitter'; // ダミー
                 }
@@ -407,8 +437,13 @@ var download_media_timeline = ( function () {
             } // end of fetch_tweet_info()
         
         ,   _get_last_note_ts : function () {
-                var last_note_ts = localStorage[ '__DM__:latestNotificationTimestamp' ],
-                    last_note_ts = ( last_note_ts ) ? last_note_ts : new Date().getTime();
+                var last_note_ts = null;
+                try {
+                    last_note_ts = localStorage( '__DM__:latestNotificationTimestamp' );
+                }
+                catch ( error ) {
+                }
+                last_note_ts = ( last_note_ts ) ? last_note_ts : new Date().getTime();
                 
                 return last_note_ts;
             } // end of _get_last_note_ts()
@@ -522,23 +557,29 @@ var download_media_timeline = ( function () {
                     filters = [];
                 
                 if ( self.search_timeline_parameters.is_first ) {
-                    if ( self.screen_name ) {
+                    if ( self.is_search_timeline ) {
+                        html_data.q = self.search_query;
+                    }
+                    else {
                         html_data.q = 'exclude:retweets from:' + self.screen_name + ' max_id:' + self.current_max_position;
                         if ( self.since_id ) {
                             html_data.q += ' since_id:'+ self.since_id;
                         }
                     }
-                    else {
-                        html_data.q = self.search_query;
-                    }
                     
-                    if ( self.filter_info.image || self.filter_info.gif ) {
+                    if ( self.filter_info.image ) {
                         filters.push( 'filter:images' );
                     }
-                    if ( self.filter_info.video || self.filter_info.gif ) {
-                        filters.push( 'filter:videos' );
+                    if ( self.filter_info.gif ) {
+                        filters.push( 'card_name:animated_gif' );
                     }
-                    html_data.q += ' ' + filters.join( ' OR ' );
+                    if ( self.filter_info.video ) {
+                        //filters.push( 'filter:videos' ); // TODO: 外部サイトの動画(YouTube等)は未サポート← 'filter:videos' だとそれらも含む
+                        filters.push( 'filter:native_video' );
+                    }
+                    
+                    html_data.q += ' ' + filters.join( ' OR ' )
+                    html_data.q += ' -filter:vine -filter:periscope'; // TODO: Vine, Periscope は未サポート
                     
                     if ( self.is_search_timeline ) {
                         w.location.href.replace( /^.*\?/, '' ).split( '&' ).forEach( function ( param ) {
@@ -713,7 +754,7 @@ var download_media_timeline = ( function () {
                         event.preventDefault();
                         
                         support_image = jq_input.is( ':checked' );
-                        localStorage[ SCRIPT_NAME + '_support_image' ] = ( support_image ) ? '1' : '0';
+                        set_value( SCRIPT_NAME + '_support_image', ( support_image ) ? '1' : '0' );
                     } );
                 
                 self.jq_checkbox_gif = jq_checkbox_gif = $( '<label><input type="checkbox" name="gif">' + OPTIONS.CHECKBOX_GIF_TEXT + '</label>' )
@@ -728,7 +769,7 @@ var download_media_timeline = ( function () {
                         event.preventDefault();
                         
                         support_gif = jq_input.is( ':checked' );
-                        localStorage[ SCRIPT_NAME + '_support_gif' ] = ( support_gif ) ? '1' : '0';
+                        set_value( SCRIPT_NAME + '_support_gif', ( support_gif ) ? '1' : '0' );
                     } );
                 
                 self.jq_checkbox_video = jq_checkbox_video = $( '<label><input type="checkbox" name="video">' + OPTIONS.CHECKBOX_VIDEO_TEXT + '</label>' )
@@ -743,7 +784,7 @@ var download_media_timeline = ( function () {
                         event.preventDefault();
                         
                         support_video = jq_input.is( ':checked' );
-                        localStorage[ SCRIPT_NAME + '_support_video' ] = ( support_video ) ? '1' : '0';
+                        set_value( SCRIPT_NAME + '_support_video', ( support_video ) ? '1' : '0' );
                     } );
                 
                 self.jq_button_start = jq_button_start = $( '<button />' )
@@ -1120,6 +1161,7 @@ var download_media_timeline = ( function () {
         
         ,   start_download : function () {
                 var self = this,
+                    is_search_timeline = self.is_search_timeline = /\/search/.test( w.location.href ),
                     screen_name = get_screen_name(),
                     since_id = get_tweet_id( self.jq_since_id.val() ),
                     until_id = get_tweet_id( self.jq_until_id.val() ),
@@ -1146,7 +1188,7 @@ var download_media_timeline = ( function () {
                 if ( isNaN( limit_tweet_number ) ) {
                     limit_tweet_number = 0;
                 }
-                localStorage[ SCRIPT_NAME + '_limit_tweet_number' ] = String( limit_tweet_number );
+                set_value( SCRIPT_NAME + '_limit_tweet_number', String( limit_tweet_number ) );
                 
                 if ( self.downloading ) {
                     return self;
@@ -1236,7 +1278,7 @@ var download_media_timeline = ( function () {
                         return;
                     }
                     
-                    var filename_head = ( screen_name ) ? screen_name : 'search(' + format_date( new Date(), 'YYYYMMDD_hhmmss' ) + ')',
+                    var filename_head = ( self.is_search_timeline ) ? ( 'search(' + format_date( new Date(), 'YYYYMMDD_hhmmss' ) + ')' ) : screen_name,
                         filename_prefix = [ filename_head, ( min_id + '(' + datetime_to_timestamp( min_datetime ) + ')' ), ( max_id + '(' + datetime_to_timestamp( max_datetime ) + ')' ), 'media' ].join( '-' );
                     
                     zip.file( filename_prefix + '.log', self.jq_log.text() );
@@ -1658,36 +1700,36 @@ function start_mutation_observer() {
 
 
 function initialize() {
-    if ( ( localStorage[ SCRIPT_NAME + '_limit_tweet_number' ] !== undefined ) && ( ! isNaN( localStorage[ SCRIPT_NAME + '_limit_tweet_number' ] ) ) ) {
-        limit_tweet_number = parseInt( localStorage[ SCRIPT_NAME + '_limit_tweet_number' ], 10 );
+    if ( ( get_value( SCRIPT_NAME + '_limit_tweet_number' ) !== undefined ) && ( ! isNaN( get_value( SCRIPT_NAME + '_limit_tweet_number' ) ) ) ) {
+        limit_tweet_number = parseInt( get_value( SCRIPT_NAME + '_limit_tweet_number' ), 10 );
     }
     else {
         limit_tweet_number = OPTIONS.DEFAULT_LIMIT_TWEET_NUMBER;
-        localStorage[ SCRIPT_NAME + '_limit_tweet_number' ] = String( limit_tweet_number );
+        set_value( SCRIPT_NAME + '_limit_tweet_number',  String( limit_tweet_number ) );
     }
     
-    if ( localStorage[ SCRIPT_NAME + '_support_image' ] !== undefined ) {
-        support_image = ( localStorage[ SCRIPT_NAME + '_support_image' ] !== '0' );
+    if ( get_value( SCRIPT_NAME + '_support_image' ) !== undefined ) {
+        support_image = ( get_value( SCRIPT_NAME + '_support_image' ) !== '0' );
     }
     else {
         support_image = OPTIONS.DEFAULT_SUPPORT_IMAGE;
-        localStorage[ SCRIPT_NAME + '_support_image' ] = ( support_image ) ? '1' : '0';
+        set_value( SCRIPT_NAME + '_support_image', ( support_image ) ? '1' : '0' );
     }
 
-    if ( localStorage[ SCRIPT_NAME + '_support_gif' ] !== undefined ) {
-        support_gif = ( localStorage[ SCRIPT_NAME + '_support_gif' ] !== '0' );
+    if ( get_value( SCRIPT_NAME + '_support_gif' ) !== undefined ) {
+        support_gif = ( get_value( SCRIPT_NAME + '_support_gif' ) !== '0' );
     }
     else {
         support_gif = OPTIONS.DEFAULT_SUPPORT_GIF;
-        localStorage[ SCRIPT_NAME + '_support_gif' ] = ( support_gif ) ? '1' : '0';
+        set_value( SCRIPT_NAME + '_support_gif', ( support_gif ) ? '1' : '0' );
     }
     
-    if ( localStorage[ SCRIPT_NAME + '_support_video' ] !== undefined ) {
-        support_video = ( localStorage[ SCRIPT_NAME + '_support_video' ] !== '0' );
+    if ( get_value( SCRIPT_NAME + '_support_video' ) !== undefined ) {
+        support_video = ( get_value( SCRIPT_NAME + '_support_video' ) !== '0' );
     }
     else {
         support_video = OPTIONS.DEFAULT_SUPPORT_VIDEO;
-        localStorage[ SCRIPT_NAME + '_support_video' ] = ( support_video ) ? '1' : '0';
+        set_value( SCRIPT_NAME + '_support_video', ( support_video ) ? '1' : '0' );
     }
     
     $.ajax( {
