@@ -2,7 +2,7 @@
     "manifest_version" : 2
 ,   "name" : "__MSG_ext_title__"
 ,   "short_name" : "__MSG_ext_short_name__"
-,   "version" : "0.1.0.1001"
+,   "version" : "0.1.1.101"
 ,   "description" : "__MSG_ext_description__"
 ,   "default_locale" : "en"
 ,   "icons" : {
@@ -29,5 +29,11 @@
 ,   "background": {
         "scripts" : [ "js/background.js" ]
     ,   "persistent" : true
+    }
+,   "options_page" : "html/options.html"
+,   "browser_action" : {
+        "default_icon" : "img/icon_16.png"
+    ,   "default_title" : "__MSG_ext_title__"
+    ,   "default_popup" : "html/options.html"
     }
 }

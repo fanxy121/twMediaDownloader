@@ -1,0 +1,123 @@
+@charset "utf-8";
+
+body {
+    margin: 0;
+    background: #f8f4e6;
+    min-width: 600px;
+}
+body * {
+    font-family: 'ヒラギノ角ゴ Pro W3','Hiragino Kaku Gothic Pro','メイリオ',Meiryo,'ＭＳ Ｐゴシック',sans-serif;
+    vertical-align: middle;
+}
+
+h1 {
+    font-size: 12px;
+    margin: 0;
+    padding: 4px 8px;
+    color: #f8fbf8;
+    background: #95859c;
+}
+
+h1 a {
+    color: #f8fbf8;
+    text-decoration: none;
+}
+
+div.main {
+    margin: 0;
+    padding: 0;
+    font-size: 14px;
+    line-height: 120%;
+}
+
+form#form_opts {
+    margin: 0;
+    padding: 4px;
+    border: ridge 3px silver;
+    background: #fbfaf5;
+}
+
+form#form_command {
+    padding: 4px 16px;
+}
+
+h2 {
+    margin: 0;
+    padding: 4px 8px;
+    font-size: 16px;
+    font-weight: bolder;
+    color: #544a47;
+    border-bottom: solid 2px #544a47;
+}
+
+div.opt {
+    margin: 4px 16px 12px 16px;
+}
+
+p {
+    margin: 8px 16px;
+}
+
+img {
+    margin-left: 32px;
+}
+
+label {
+    margin-right: 16px;
+}
+
+span.header {
+    margin-right: 16px;
+}
+
+span.note {
+    font-size: 10px;
+}
+
+span.text,
+input.text {
+    display: inline-block;
+    width: 160px;
+    padding: 0 8px 0 8px;
+}
+
+input.text {
+    background: #f7fcfe
+}
+
+span.short_text,
+input.short_text {
+    display: inline-block;
+    width: 40px;
+    padding: 0 8px 0 8px;
+}
+
+input.button {
+    display: inline-block;
+    margin-right: 12px;
+    font-weight: bolder;
+    cursor: pointer;
+    border: solid 1px #7b8d42;
+    border-radius: 2px;
+    color: #513743;
+    background: #e0ebaf;
+}
+
+.clearfix:after {
+    content: ".";
+    font-size: 0px;
+    line-height: 0px;
+    display: block;
+    height: 0px;
+    clear: both;
+    visibility: hidden;
+}
+.clearfix {
+    display: inline-block;
+} 
+* html .clearfix {
+    height: 1%;
+} 
+.clearfix {
+    display: block;
+}

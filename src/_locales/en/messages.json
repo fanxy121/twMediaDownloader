@@ -8,7 +8,34 @@
     ,   "description" : "The short version of the extension's name."
     }
 ,   "ext_description" : {
-        "message" : "Download images of user's media-timeline on Twitter."
+        "message" : "Download images/videos of user's media-timeline on Twitter."
     ,   "description" : "The description of the extension."
+    }
+,   "OPTIONS" : {
+        "message" : "Twitter Media Downloader"
+    }
+,   "SET" : {
+        "message" : "set"
+    }
+,   "DEFAULT" : {
+        "message" : "Default"
+    }
+,   "ENABLED" : {
+        "message" : "Enabled"
+    }
+,   "DISABLED" : {
+        "message" : "Disabled"
+    }
+,   "START" : {
+        "message" : "Start"
+    }
+,   "STOP" : {
+        "message" : "Stop"
+    }
+,   "UNDER_SUSPENSION" : {
+        "message" : "Under suspension"
+    }
+,   "VIDEO_DOWNLOAD_LINK" : {
+        "message" : "Video Download Links"
     }
 }

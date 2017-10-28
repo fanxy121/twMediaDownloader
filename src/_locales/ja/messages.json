@@ -8,7 +8,34 @@
     ,   "description" : "The short version of the extension's name."
     }
 ,   "ext_description" : {
-        "message" : "Web版Twitterで、ユーザーのメディアタイムラインの原寸画像をまとめてダウンロードできます。"
+        "message" : "Web版Twitterで、ユーザーのメディアタイムラインの原寸画像・動画をまとめてダウンロードできます。"
     ,   "description" : "The description of the extension."
+    }
+,   "OPTIONS" : {
+        "message" : "Twitter メディアダウンローダ"
+    }
+,   "SET" : {
+        "message" : "設定"
+    }
+,   "DEFAULT" : {
+        "message" : "デフォルトに戻す"
+    }
+,   "ENABLED" : {
+        "message" : "有効"
+    }
+,   "DISABLED" : {
+        "message" : "無効"
+    }
+,   "START" : {
+        "message" : "動作開始"
+    }
+,   "STOP" : {
+        "message" : "動作停止"
+    }
+,   "UNDER_SUSPENSION" : {
+        "message" : "停止中"
+    }
+,   "VIDEO_DOWNLOAD_LINK" : {
+        "message" : "動画ダウンロードリンク"
     }
 }
