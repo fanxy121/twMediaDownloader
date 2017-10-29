@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.3
+// @version         0.1.1.4
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.0.0/jszip.min.js
@@ -406,7 +406,7 @@ var download_media_timeline = ( function () {
               //   922337203685477580を超えたからだと思われる→比較する際に上位から18桁分しか評価されていない？
               //   ただし、9223372036854775808(=2^63)を指定すると一つもダウンロードできなくなるので、範囲チェックはされている模様
         
-        ,   timeline_status : null // 'media' / 'search' / 'end' / 'error'
+        ,   timeline_status : null // 'media' / 'search' / 'end' / 'error' / 'stop'
         ,   screen_name : null
         ,   search_query : null
         ,   until_id : null
@@ -496,6 +496,13 @@ var download_media_timeline = ( function () {
                         return self;
                     }
                     if ( self.current_min_id <= tweet_info.tweet_id ) {
+                        if ( self.timeline_status == 'stop' ) {
+                            callback( {
+                                tweet_info : null
+                            ,   timeline_status : self.timeline_status
+                            } );
+                            return self;
+                        }
                         return self.fetch_tweet_info( callback );
                     }
                     
@@ -522,6 +529,8 @@ var download_media_timeline = ( function () {
                         } );
                         break;
                     
+                    case 'stop' :
+                    case 'error' :
                     default :
                         callback( {
                             tweet_info : tweet_info
@@ -531,6 +540,12 @@ var download_media_timeline = ( function () {
                 }
                 return self;
             } // end of fetch_tweet_info()
+        
+        ,   stop : function () {
+                var self = this;
+                
+                self.timeline_status = 'stop';
+            } // end of stop()
         
         ,   _get_last_note_ts : function () {
                 var last_note_ts = null;
@@ -1218,7 +1233,7 @@ var download_media_timeline = ( function () {
                 self.jq_checkbox_container.find( 'input[type=checkbox]' ).prop( 'disabled', false );
                 
                 return self;
-            } // end of reset_flags()
+            } // end of reset_buttons()
         
         ,   show_container : function () {
                 var self = this,
@@ -1239,6 +1254,17 @@ var download_media_timeline = ( function () {
                 
                 jq_container.show();
                 
+                $( d.body ).keydown( function ( event ) {
+                    switch ( event.keyCode ) {
+                        case 27 :
+                            event.stopPropagation();
+                            event.preventDefault();
+                            
+                            self.jq_button_close.click();
+                            break;
+                    }
+                } );
+                
                 return self;
             } // end of show_container()
         
@@ -1249,6 +1275,8 @@ var download_media_timeline = ( function () {
                 if ( ! jq_container ) {
                     return self;
                 }
+                
+                $( d.body ).unbind( 'keydown' );
                 
                 jq_container.hide();
                 
@@ -1267,7 +1295,7 @@ var download_media_timeline = ( function () {
                     min_datetime = '',
                     total_tweet_counter = 0,
                     total_image_counter = 0,
-                    MediaTimeline = object_extender( TemplateMediaTimeline ).init( screen_name, until_id, since_id, {
+                    MediaTimeline = self.MediaTimeline = object_extender( TemplateMediaTimeline ).init( screen_name, until_id, since_id, {
                         image : support_image
                     ,   gif : support_gif
                     ,   video : support_video
@@ -1634,6 +1662,9 @@ var download_media_timeline = ( function () {
                 self.jq_button_stop.prop( 'disabled', true );
                 self.jq_checkbox_container.find( 'input[type=checkbox]' ).prop( 'disabled', false );
                 
+                if ( self.MediaTimeline ) {
+                    self.MediaTimeline.stop();
+                }
                 self.stopping = true;
                 
                 return self;
@@ -1647,7 +1678,11 @@ var download_media_timeline = ( function () {
                 self.jq_checkbox_container.find( 'input[type=checkbox]' ).prop( 'disabled', true );
                 
                 if ( self.downloading ) {
+                    if ( self.MediaTimeline ) {
+                        self.MediaTimeline.stop();
+                    }
                     self.closing = true;
+                    
                     return self;
                 }
                 
@@ -1752,6 +1787,7 @@ function add_media_link_to_tweet( jq_tweet ) {
             ,   'background' : '#657786'
             ,   'text-decoration' : 'none'
             ,   'cursor' : 'pointer'
+            ,   'display' : 'inline-block'
             } );
     
     if ( ( ! tweet_id ) || ( ( jq_images.length <= 0 ) && ( jq_playable_media.length <= 0 ) ) ) {
@@ -2003,7 +2039,15 @@ function add_media_link_to_tweet( jq_tweet ) {
         }
     }
     
-    jq_action_list.append( jq_media_link_container );
+    var jq_action_more = jq_action_list.find( '.ProfileTweet-action--more' );
+    
+    if ( 0 < jq_action_more.length ) {
+        // 操作性のため、「その他」メニュー("float:right;"指定)よりも左側に挿入
+        jq_action_more.before( jq_media_link_container );
+    }
+    else {
+        jq_action_list.append( jq_media_link_container );
+    }
     
 } // end of add_media_link_to_tweet()
 
