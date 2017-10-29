@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.2
+// @version         0.1.1.3
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.0.0/jszip.min.js
@@ -556,7 +556,7 @@ var download_media_timeline = ( function () {
                 }
                 tweet_info.tweet_url = tweet_url;
                 tweet_info.tweet_id = jq_tweet.find( '*[data-tweet-id]' ).attr( 'data-tweet-id' );
-                tweet_info.tweet_screen_name = jq_tweet.find( 'a.js-user-profile-link:first' ).attr( 'href' ).replace( /^.*\//, '' );
+                tweet_info.tweet_screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' );
                 tweet_info.timestamp_ms = timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' );
                 tweet_info.datetime = ( timestamp_ms ) ? format_date( new Date( parseInt( timestamp_ms, 10 ) ), 'YYYY/MM/DD hh:mm:ss' ) : '';
                 tweet_info.tweet_text = jq_tweet.find( '.js-tweet-text, .tweet-text' ).text();
@@ -1784,7 +1784,7 @@ function add_media_link_to_tweet( jq_tweet ) {
                     return;
                 }
                 
-                var screen_name = jq_tweet.find( 'a.js-user-profile-link:first' ).attr( 'href' ).replace( /^.*\//, '' ),
+                var screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' ),
                     timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' ),
                     timestamp = ( timestamp_ms ) ? format_date( new Date( parseInt( timestamp_ms, 10 ) ), 'YYYYMMDD_hhmmss' ) : '',
                     media_prefix = 'img',
@@ -1896,7 +1896,7 @@ function add_media_link_to_tweet( jq_tweet ) {
         jq_media_link.text( OPTIONS.VIDEO_DOWNLOAD_LINK_TEXT );
         
         function activate_video_download_link( video_url, media_prefix ) {
-            var screen_name = jq_tweet.find( 'a.js-user-profile-link:first' ).attr( 'href' ).replace( /^.*\//, '' ),
+            var screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' ),
                 timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' ),
                 timestamp = ( timestamp_ms ) ? format_date( new Date( parseInt( timestamp_ms, 10 ) ), 'YYYYMMDD_hhmmss' ) : '',
                 filename = [ screen_name, tweet_id, timestamp, media_prefix + '1' ].join( '-' ) + '.mp4',
