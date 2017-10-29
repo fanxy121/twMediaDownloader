@@ -35,6 +35,9 @@
 ,   "UNDER_SUSPENSION" : {
         "message" : "停止中"
     }
+,   "IMAGE_DOWNLOAD_LINK" : {
+        "message" : "画像ダウンロードリンク"
+    }
 ,   "VIDEO_DOWNLOAD_LINK" : {
         "message" : "動画ダウンロードリンク"
     }

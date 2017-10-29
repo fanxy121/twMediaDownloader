@@ -2,7 +2,8 @@
 
 $().ready( function () {
     var RADIO_KV_LIST = [
-            { key : 'VIDEO_DOWNLOAD_LINK', val : true }
+            { key : 'IMAGE_DOWNLOAD_LINK', val : true }
+        ,   { key : 'VIDEO_DOWNLOAD_LINK', val : true }
         ],
         INT_KV_LIST = [
         ],

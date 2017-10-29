@@ -75,6 +75,7 @@ function get_init_function( message_type, option_name_to_function_map, namespace
 var twMediaDownloader_chrome_init = ( function() {
     var option_name_to_function_map = {
             OPERATION : get_bool
+        ,   IMAGE_DOWNLOAD_LINK : get_bool
         ,   VIDEO_DOWNLOAD_LINK : get_bool
         };
     
