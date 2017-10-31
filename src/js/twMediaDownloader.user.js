@@ -2,10 +2,11 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.4
+// @version         0.1.1.5
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
-// @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.0.0/jszip.min.js
+// @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
+// @require         https://cdnjs.cloudflare.com/ajax/libs/decimal.js/7.3.0/decimal.min.js
 // @grant           GM_xmlhttpRequest
 // @grant           GM_setValue
 // @grant           GM_getValue
@@ -23,12 +24,17 @@
     [License | jQuery Foundation](https://jquery.org/license/)
 
 - [JSZip](https://stuk.github.io/jszip/)
-    The MIT License
     Copyright (c) 2009-2014 Stuart Knightley, David Duponchel, Franz Buchinger, António Afonso
+    The MIT License
     [jszip/LICENSE.markdown](https://github.com/Stuk/jszip/blob/master/LICENSE.markdown)
 
-■ 関連記事など
+- [MikeMcl/decimal.js: An arbitrary-precision Decimal type for JavaScript](https://github.com/MikeMcl/decimal.js)
+    Copyright (c) 2016, 2017 Michael Mclaughlin
+    The MIT Licence
+    [decimal.js/LICENCE.md](https://github.com/MikeMcl/decimal.js/blob/master/LICENCE.md)
 
+■ 関連記事など
+- [Twitter メディアダウンローダ：ユーザータイムラインの原寸画像や動画をまとめてダウンロードするユーザースクリプト(PC用Google Chrome・Firefox等対応) - 風柳メモ](http://furyu.hatenablog.com/entry/20160723/1469282864)
 */
 
 /*
@@ -84,8 +90,8 @@ if ( w[ SCRIPT_NAME + '_touched' ] ) {
 }
 w[ SCRIPT_NAME + '_touched' ] = true;
 
-if ( ( typeof jQuery != 'function' ) || ( typeof JSZip != 'function' ) ) {
-    console.error( SCRIPT_NAME + ':', 'Library not found', typeof jQuery, typeof JSZip );
+if ( ( typeof jQuery != 'function' ) || ( typeof JSZip != 'function' ) || ( typeof Decimal != 'function' ) ) {
+    console.error( SCRIPT_NAME + ':', 'Library not found', typeof jQuery, typeof JSZip, typeof Decimal );
     return;
 }
 
@@ -235,6 +241,59 @@ function format_date( date, format ) {
 } // end of format_date()
 
 
+// Twitter のツイートID は 64 ビットで、以下のような構成をとっている
+//   [63:63]( 1) 0(固定)
+//   [62:22](41) timestamp: 現在の Unix Time(ms) から、1288834974657(ms) (2011/11/04 01:42:54 UTC) を引いたもの
+//   [21:12](10) machine id: 生成器に割り当てられたID。datacenter id + worker id
+//   [11: 0](12) 生成器ごとに採番するsequence番号
+//
+// 参考:[Twitterのsnowflakeについて](https://www.slideshare.net/moaikids/20130901-snowflake)
+//      [ツイートID生成とツイッターリアルタイム検索システムの話](https://www.slideshare.net/pfi/id-15755280)
+function tweet_id_to_date( tweet_id ) {
+    var bignum_tweet_id = new Decimal( tweet_id );
+    
+    if ( bignum_tweet_id.cmp( '300000000000000' ) < 0 ) {
+        // ツイートID仕様の切替(2010/11/04 22時 UTC頃)以前のものは未サポート
+        return null;
+    }
+    return new Date( parseInt( bignum_tweet_id.div( Decimal.pow( 2, 22 ) ).floor().add( 1288834974657 ), 10 ) );
+} // end of tweet_id_to_date()
+
+
+function datetime_to_tweet_id( datetime ) {
+    try {
+        var date = new Date( datetime ),
+            utc_ms = date.getTime();
+        
+        if ( isNaN( utc_ms ) ) {
+            return null;
+        }
+        
+        var tweet_timestamp = Decimal.sub( utc_ms, 1288834974657 );
+        
+        if ( tweet_timestamp.cmp( 0 ) < 0 ) {
+            return null;
+        }
+        
+        var bignum_tweet_id = tweet_timestamp.mul( Decimal.pow( 2, 22 ) );
+        
+        if ( bignum_tweet_id.cmp( '300000000000000' ) < 0 ) {
+            // ツイートID仕様の切替(2010/11/04 22時 UTC頃)以前のものは未サポート
+            return null;
+        }
+        return bignum_tweet_id.toString();
+    }
+    catch ( error ) {
+        return null;
+    }
+} // end of datetime_to_tweet_id()
+
+
+function decimal_cmp( tweet_id1, tweet_id2 ) {
+    return new Decimal( tweet_id1 ).cmp( tweet_id2 );
+} // end of decimal_cmp()
+
+
 function get_img_url( img_url, kind ) {
     if ( ! kind ) {
         kind = '';
@@ -291,7 +350,12 @@ function get_tweet_id( url ) {
         url = w.location.href;
     }
     
-    if ( ! url.trim().match( /(?:^|\/)(\d+)(?:$|\/)/ ) ) {
+    url = url.trim();
+    if ( /^\d+$/.test( url ) ) {
+        return url;
+    }
+
+    if ( ! url.trim().match( /^https?:\/\/.*?\/(\d+)(?:$|\/)/ ) ) {
         return null;
     }
     
@@ -302,6 +366,14 @@ function get_tweet_id( url ) {
 function datetime_to_timestamp( datetime ) {
     return datetime.replace( /[\/:]/g, '' ).replace( / /g, '_' )
 } // end of datetime_to_timestamp()
+
+
+// TODO: zip.file() で date オプションを指定した際、ZIP のタイムスタンプがずれてしまう
+// => 暫定対応
+function adjust_date_for_zip( date ) {
+    // TODO: なぜかタイムスタンプに1秒前後の誤差が出てしまう
+    return new Date( date.getTime() - date.getTimezoneOffset() * 60000 );
+} // end of adjust_date_for_zip()
 
 
 function save_blob( filename, blob ) {
@@ -400,11 +472,17 @@ var get_value = ( function () {
 
 var download_media_timeline = ( function () {
     var TemplateMediaTimeline = {
-//          DEFAULT_UNTIL_ID : '9223372036854775807' // 0x7fffffffffffffff = 2^63-1
-            DEFAULT_UNTIL_ID : '999999999999999999'
-              // [2017/10/25] 最新の画像がダウンロードできなくなったので修正
-              //   922337203685477580を超えたからだと思われる→比較する際に上位から18桁分しか評価されていない？
-              //   ただし、9223372036854775808(=2^63)を指定すると一つもダウンロードできなくなるので、範囲チェックはされている模様
+        DEFAULT_UNTIL_ID : '9223372036854775807' // 0x7fffffffffffffff = 2^63-1
+        // [2017/10/25] 最新の画像がダウンロードできなくなったので修正
+        //   922337203685477580を超えたからだと思われる→比較する際に上位から18桁分しか評価されていない？
+        //   ただし、9223372036854775808(=2^63)を指定すると一つもダウンロードできなくなるので、範囲チェックはされている模様
+        //   →これでは（DEFAULT_UNTIL_ID : '999999999999999999' だと）、2018/05/25 22:05:53 までしか動作しないことになる……
+        // 
+        // [2017/10/31] そもそもの比較方法が誤っていたので、これを修正
+        //   '922337203685477580' < '9223372036854775807' // => true
+        //   '922337203685477581' < '9223372036854775807' // => false になってしまう
+        //     ↓
+        //   decimal_cmp( '922337203685477581', '9223372036854775807' ) < 0 // => true
         
         ,   timeline_status : null // 'media' / 'search' / 'end' / 'error' / 'stop'
         ,   screen_name : null
@@ -486,7 +564,7 @@ var download_media_timeline = ( function () {
                     tweet_info = self.tweet_info_list.shift();
                 
                 if ( tweet_info ) {
-                    if ( ( self.since_id ) && ( tweet_info.tweet_id <= self.since_id ) ) {
+                    if ( ( self.since_id ) && ( decimal_cmp( tweet_info.tweet_id, self.since_id ) <= 0 ) ) {
                         self.timeline_status = 'end';
                         
                         callback( {
@@ -495,7 +573,7 @@ var download_media_timeline = ( function () {
                         } );
                         return self;
                     }
-                    if ( self.current_min_id <= tweet_info.tweet_id ) {
+                    if ( decimal_cmp( self.current_min_id, tweet_info.tweet_id ) <= 0 ) {
                         if ( self.timeline_status == 'stop' ) {
                             callback( {
                                 tweet_info : null
@@ -562,6 +640,7 @@ var download_media_timeline = ( function () {
         ,   _get_tweet_info : function ( jq_tweet ) {
                 var tweet_info = { media_type : null },
                     tweet_url,
+                    date,
                     timestamp_ms,
                     image_urls = [];
                 
@@ -573,7 +652,9 @@ var download_media_timeline = ( function () {
                 tweet_info.tweet_id = jq_tweet.find( '*[data-tweet-id]' ).attr( 'data-tweet-id' );
                 tweet_info.tweet_screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' );
                 tweet_info.timestamp_ms = timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' );
-                tweet_info.datetime = ( timestamp_ms ) ? format_date( new Date( parseInt( timestamp_ms, 10 ) ), 'YYYY/MM/DD hh:mm:ss' ) : '';
+                tweet_info.date = date = new Date( parseInt( timestamp_ms, 10 ) );
+                tweet_info.datetime = ( timestamp_ms ) ? format_date( date, 'YYYY/MM/DD hh:mm:ss' ) : '';
+                tweet_info.zipdate = adjust_date_for_zip( date );
                 tweet_info.tweet_text = jq_tweet.find( '.js-tweet-text, .tweet-text' ).text();
                 
                 if ( support_image ) {
@@ -630,7 +711,7 @@ var download_media_timeline = ( function () {
                         }
                         tweet_info_list.push( tweet_info );
                         
-                        if ( tweet_info.tweet_id < min_id ) {
+                        if ( decimal_cmp( tweet_info.tweet_id, min_id ) < 0 ) {
                             min_id = tweet_info.tweet_id;
                         }
                         tweet_count ++;
@@ -639,7 +720,7 @@ var download_media_timeline = ( function () {
                     if ( json.min_position ) {
                         self.current_max_position = json.min_position;
                     }
-                    else if ( min_id < self.current_max_position ) {
+                    else if ( decimal_cmp( min_id, self.current_max_position ) < 0 ) {
                         self.current_max_position = min_id;
                     }
                     else {
@@ -840,6 +921,8 @@ var download_media_timeline = ( function () {
                     jq_since_id,
                     jq_until_id,
                     jq_limit_tweet_number,
+                    jq_since_date,
+                    jq_until_date,
                     jq_botton_container,
                     jq_button_start,
                     jq_button_stop,
@@ -1001,7 +1084,7 @@ var download_media_timeline = ( function () {
                     ,   'height' : '30%'
                     } );
                 
-                jq_range_container = $( '<div><h3></h3><p><input type="text" name="since_id" value="" class="tweet_id" /><span class="range_text"></span><input type="text" name="until_id" class="tweet_id" /><label class="limit"></label><input type="text" name="limit" class="tweet_number" /></p></div>' )
+                jq_range_container = $( '<div><h3></h3><table><tbody><tr><td><input type="text" name="since_id" value="" class="tweet_id" /></td><td><span class="range_text"></span></td><td><input type="text" name="until_id" class="tweet_id" /></td><td><label class="limit"></label><input type="text" name="limit" class="tweet_number" /></td></tr><tr class="date-range"><td class="date since-date"></td><td></td><td class="date until-date"></td><td></td></tr></tbody></table></div>' )
                     .attr( {
                     } )
                     .css( {
@@ -1013,14 +1096,16 @@ var download_media_timeline = ( function () {
                     .attr( {
                     } )
                     .css( {
-                        'margin' : '16px'
+                        'margin' : '16px 16px 12px 16px'
                     } );
                 
-                jq_range_container.find( 'p' )
+                jq_range_container.find( 'table' )
                     .attr( {
                     } )
                     .css( {
-                        'text-align' : 'center'
+                        'width' : '560px'
+                    ,   'margin' : '0 auto 0 auto'
+                    ,   'text-align' : 'center'
                     } );
                 
                 jq_range_container.find( 'span.range_text' )
@@ -1030,11 +1115,19 @@ var download_media_timeline = ( function () {
                     .css( {
                         'margin-left' : '8px'
                     ,   'margin-right' : '8px'
+                    } )
+                    .parent()
+                    .css( {
+                        'width' : '80px'
                     } );
                 
                 jq_range_container.find( 'input.tweet_id' )
                     .attr( {
                     } )
+                    .css( {
+                        'width' : '160px'
+                    } )
+                    .parent()
                     .css( {
                         'width' : '160px'
                     } );
@@ -1046,6 +1139,11 @@ var download_media_timeline = ( function () {
                     .css( {
                         'margin-left' : '8px'
                     ,   'margin-right' : '8px'
+                    } )
+                    .parent()
+                    .css( {
+                        'width' : '160px'
+                    ,   'text-align' : 'right'
                     } );
                 
                 jq_range_container.find( 'input.tweet_number' )
@@ -1055,10 +1153,44 @@ var download_media_timeline = ( function () {
                         'width' : '48px'
                     } );
                 
+                jq_range_container.find( 'tr.date-range' )
+                    .attr( {
+                    } )
+                    .css( {
+                        'height' : '20px'
+                    } );
+                
                 self.jq_since_id = jq_since_id = jq_range_container.find( 'input[name="since_id"]' );
                 self.jq_until_id = jq_until_id = jq_range_container.find( 'input[name="until_id"]' );
-                self.jq_limit_tweet_number = jq_limit_tweet_number = jq_range_container.find( 'input[name="limit"]' );
+                self.jq_since_date = jq_since_date = jq_range_container.find( 'tr.date-range td.since-date' );
+                self.jq_until_date = jq_until_date = jq_range_container.find( 'tr.date-range td.until-date' );
                 
+                
+                function set_change_event( jq_target_id, jq_target_date ) {
+                    jq_target_id.change( function ( event ) {
+                        var val = jq_target_id.val().trim(),
+                            tweet_id = get_tweet_id( val ),
+                            date = null;
+                        
+                        if ( ! tweet_id ) {
+                            tweet_id = datetime_to_tweet_id( val );
+                        }
+                        if ( ! tweet_id ) {
+                            jq_target_id.val( '' );
+                            jq_target_date.text( '' );
+                            return;
+                        }
+                        date = tweet_id_to_date( tweet_id );
+                        jq_target_id.val( tweet_id );
+                        jq_target_date.text( ( date ) ? format_date( date, 'YYYY/MM/DD hh:mm:ss' ) : '' );
+                    } );
+                } // end of set_change_event()
+                
+                
+                set_change_event( jq_since_id, jq_since_date );
+                set_change_event( jq_until_id, jq_until_date );
+                
+                self.jq_limit_tweet_number = jq_limit_tweet_number = jq_range_container.find( 'input[name="limit"]' );
                 jq_limit_tweet_number.val( limit_tweet_number );
                 
                 self.jq_checkbox_container = jq_checkbox_container = $( '<div />' )
@@ -1080,7 +1212,7 @@ var download_media_timeline = ( function () {
                         'position' : 'relative'
                     ,   'left' : ( oauth2_access_token ) ? '60%' : '50%'
                     ,   'float' : 'left'
-                    ,   'margin' : '16px 0 0 0'
+                    ,   'margin' : '0 0 0 0'
                     } );
                 
                 self.jq_status_container = jq_status_container = $( '<div />' )
@@ -1250,6 +1382,8 @@ var download_media_timeline = ( function () {
                 
                 self.jq_since_id.val( '' );
                 self.jq_until_id.val( '' );
+                self.jq_since_date.text( '' );
+                self.jq_until_date.text( '' );
                 self.clear_log();
                 
                 jq_container.show();
@@ -1284,11 +1418,23 @@ var download_media_timeline = ( function () {
             } // end of hide_container()
         
         ,   start_download : function () {
-                var self = this,
-                    is_search_timeline = self.is_search_timeline = /\/search/.test( w.location.href ),
+                var self = this;
+                
+                if ( self.downloading ) {
+                    return self;
+                }
+                
+                self.jq_since_id.trigger( 'change', [ true ] );
+                self.jq_until_id.trigger( 'change', [ true ] );
+                
+                var is_search_timeline = self.is_search_timeline = /\/search/.test( w.location.href ),
                     screen_name = get_screen_name(),
-                    since_id = get_tweet_id( self.jq_since_id.val() ),
-                    until_id = get_tweet_id( self.jq_until_id.val() ),
+                    since_id = self.jq_since_id.val(),
+                    until_id = self.jq_until_id.val(),
+                    since_date = self.jq_since_date.text().trim(),
+                    since_date = ( since_date ) ? '(' + since_date + ')' : '(unknown)',
+                    until_date = self.jq_until_date.text().trim(),
+                    until_date = ( until_date ) ? '(' + until_date + ')' : '(unknown)',
                     max_id = '',
                     min_id = '',
                     max_datetime = '',
@@ -1305,6 +1451,7 @@ var download_media_timeline = ( function () {
                 if ( MediaTimeline.search_query ) {
                     self.log( 'Search Query :', MediaTimeline.search_query );
                 }
+                self.log( 'Tweet range :', ( ( since_id ) ? since_id : '<unspecified>' ), since_date, '-', ( ( until_id ) ? until_id : '<unspecified>' ), until_date );
                 self.log( 'Image : ' + ( support_image ? 'on' : 'off' ), ' / GIF : ' + ( support_gif ? 'on' : 'off' ), ' / Video : ' + ( support_video ? 'on' : 'off' ) );
                 self.log_hr()
                 
@@ -1314,14 +1461,7 @@ var download_media_timeline = ( function () {
                 }
                 set_value( SCRIPT_NAME + '_limit_tweet_number', String( limit_tweet_number ) );
                 
-                if ( self.downloading ) {
-                    return self;
-                }
-                
-                self.jq_since_id.val( ( since_id ) ? since_id : '' );
-                self.jq_until_id.val( ( until_id ) ? until_id : '' );
-                
-                if ( since_id && until_id && ( until_id <= since_id ) ) {
+                if ( since_id && until_id && ( decimal_cmp( until_id, since_id ) <= 0 ) ) {
                     self.log( '[Error]', 'Wrong range' );
                     
                     finish();
@@ -1377,7 +1517,7 @@ var download_media_timeline = ( function () {
                     save();
                     
                     if ( min_id ) {
-                        self.jq_until_id.val( min_id );
+                        self.jq_until_id.val( min_id ).trigger( 'change', [ true ] );
                     }
                 } // end of stop()
                 
@@ -1392,7 +1532,7 @@ var download_media_timeline = ( function () {
                     save();
                     
                     if ( is_limited && min_id ) {
-                        self.jq_until_id.val( min_id );
+                        self.jq_until_id.val( min_id ).trigger( 'change', [ true ] );
                     }
                 } // end of complete()
                 
@@ -1467,12 +1607,12 @@ var download_media_timeline = ( function () {
                         var current_tweet_id = current_tweet_info.tweet_id,
                             report_index = 0;
                         
-                        if ( ( ! max_id ) || ( max_id < current_tweet_id ) ) {
+                        if ( ( ! max_id ) || ( decimal_cmp( max_id, current_tweet_id ) < 0 ) ) {
                             max_id = current_tweet_id;
                             max_datetime = current_tweet_info.datetime;
                         }
                         
-                        if ( ( ! min_id ) || ( current_tweet_id < min_id ) ) {
+                        if ( ( ! min_id ) || ( decimal_cmp( current_tweet_id, min_id ) < 0 ) ) {
                             min_id = current_tweet_id;
                             min_datetime = current_tweet_info.datetime;
                         }
@@ -1494,7 +1634,9 @@ var download_media_timeline = ( function () {
                                 
                                 self.log( '  ' + media_prefix + report_index + ')', image_url );
                                 
-                                zip.file( image_filename, image_result.arraybuffer );
+                                zip.file( image_filename, image_result.arraybuffer, {
+                                    date : current_tweet_info.zipdate
+                                } );
                                 
                                 delete image_result.arraybuffer;
                                 image_result.arraybuffer = null;
@@ -1822,7 +1964,9 @@ function add_media_link_to_tweet( jq_tweet ) {
                 
                 var screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' ),
                     timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' ),
-                    timestamp = ( timestamp_ms ) ? format_date( new Date( parseInt( timestamp_ms, 10 ) ), 'YYYYMMDD_hhmmss' ) : '',
+                    date = new Date( parseInt( timestamp_ms, 10 ) ),
+                    timestamp = ( timestamp_ms ) ? format_date( date, 'YYYYMMDD_hhmmss' ) : '',
+                    zipdate = adjust_date_for_zip( date ),
                     media_prefix = 'img',
                     report_index = 0,
                     zip = new JSZip();
@@ -1835,7 +1979,9 @@ function add_media_link_to_tweet( jq_tweet ) {
                         
                         var image_filename = [ screen_name, tweet_id, timestamp, media_prefix + report_index ].join( '-' ) + '.' + img_extension;
                         
-                        zip.file( image_filename, image_result.arraybuffer );
+                        zip.file( image_filename, image_result.arraybuffer, {
+                            date : zipdate
+                        } );
                         
                         delete image_result.arraybuffer;
                         image_result.arraybuffer = null;
