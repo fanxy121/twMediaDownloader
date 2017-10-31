@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.5
+// @version         0.1.1.6
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -2254,9 +2254,7 @@ function start_mutation_observer() {
                 }
                 
                 if ( OPTIONS.IMAGE_DOWNLOAD_LINK || OPTIONS.VIDEO_DOWNLOAD_LINK ) {
-                    if ( check_media_tweets( addedNode ) ) {
-                        return;
-                    }
+                    check_media_tweets( addedNode );
                 }
                 
                 var jq_node = $( addedNode ),
