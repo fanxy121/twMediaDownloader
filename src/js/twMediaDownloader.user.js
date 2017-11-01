@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.7
+// @version         0.1.1.8
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -856,15 +856,17 @@ var download_media_timeline = ( function () {
                 $.getJSON( api_endpoint.url, api_data )
                 .success( function ( json ) {
                     var tweet_info_list = self.tweet_info_list,
-                        tweet_count = 0;
+                        tweet_count = 0,
+                        json_inner = ( json.inner ) ? json.inner : ( ( json.items_html && json.min_position ) ? json : null );
+                        // items_html/min_position が json.inner ではなく、json 直下にある場合もある（未ログイン時など）
                     
-                    if ( ! json.inner ) {
-                        console.error( '"json.inner" not found' );
+                    if ( ( ! json_inner ) ||  ( ! json_inner.items_html ) || ( ! json_inner.min_position ) ) {
+                        console.error( 'items not found' );
                         self.timeline_status = 'end';
                         return;
                     }
                     
-                    $( '<div/>' ).html( json.inner.items_html ).find( '.js-stream-item' ).each( function () {
+                    $( '<div/>' ).html( json_inner.items_html ).find( '.js-stream-item' ).each( function () {
                         var tweet_info = self._get_tweet_info( $( this ) );
                         
                         if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) || ( ! tweet_info.media_type ) ) {
@@ -874,9 +876,9 @@ var download_media_timeline = ( function () {
                         tweet_count ++;
                     } );
                     
-                    if ( json.inner.min_position ) {
-                        if ( json.inner.min_position != self.current_max_position ) {
-                            self.current_max_position = json.inner.min_position;
+                    if ( json_inner.min_position ) {
+                        if ( json_inner.min_position != self.current_max_position ) {
+                            self.current_max_position = json_inner.min_position;
                         }
                         else {
                             // min_position に変化がなければ終了とみなす
@@ -888,7 +890,7 @@ var download_media_timeline = ( function () {
                     }
                     /*
                     // has_more_items が false でも、実際に検索したらまだツイートがある場合がある模様
-                    //if ( ! json.inner.has_more_items ) {
+                    //if ( ! json_inner.has_more_items ) {
                     //    self.timeline_status = 'end';
                     //}
                     */
