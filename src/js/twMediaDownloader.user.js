@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.6
+// @version         0.1.1.7
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -121,7 +121,7 @@ var $ = jQuery,
 switch ( LANGUAGE ) {
     case 'ja' :
         OPTIONS.DOWNLOAD_BUTTON_TEXT = '⇩';
-        OPTIONS.DOWNLOAD_BUTTUN_TEXT_SEARCHTIMELINE = 'メディア ⇩';
+        OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG = 'メディア ⇩';
         OPTIONS.DOWNLOAD_BUTTON_HELP_TEXT = 'タイムラインの画像/動画を保存';
         OPTIONS.DIALOG_TWEET_ID_RANGE_HEADER = '保存対象 Tweet ID 範囲';
         OPTIONS.DIALOG_TWEET_ID_RANGE_MARK = '＜ ID ＜';
@@ -138,7 +138,7 @@ switch ( LANGUAGE ) {
         break;
     default:
         OPTIONS.DOWNLOAD_BUTTON_TEXT = '⇩';
-        OPTIONS.DOWNLOAD_BUTTUN_TEXT_SEARCHTIMELINE = 'Media ⇩';
+        OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG = 'Media ⇩';
         OPTIONS.DOWNLOAD_BUTTON_HELP_TEXT = 'Download images/videos from timeline';
         OPTIONS.DIALOG_TWEET_ID_RANGE_HEADER = 'Download Tweet ID range';
         OPTIONS.DIALOG_TWEET_ID_RANGE_MARK = '< ID <';
@@ -363,15 +363,26 @@ function get_tweet_id( url ) {
 } // end of get_tweet_id()
 
 
+function judge_search_timeline( url ) {
+    if ( ! url ) {
+        url = w.location.href;
+    }
+    return /\/search/.test( url );
+} // end of judge_search_timeline()
+
+
 function datetime_to_timestamp( datetime ) {
     return datetime.replace( /[\/:]/g, '' ).replace( / /g, '_' )
 } // end of datetime_to_timestamp()
 
 
 // TODO: zip.file() で date オプションを指定した際、ZIP のタイムスタンプがずれてしまう
-// => 暫定対応
+// → 標準では UTC で保存される模様（https://stuk.github.io/jszip/CHANGES.html#v300-2016-04-13）
+// → タイムゾーンに合わせて調整することで対処
 function adjust_date_for_zip( date ) {
     // TODO: なぜかタイムスタンプに1秒前後の誤差が出てしまう
+    // → ZIP の仕様上、タイムスタンプは2秒単位で丸められてしまう（拡張フィールドを使用しない場合）
+    // 参考：[ZIP (ファイルフォーマット) - Wikipedia](https://ja.wikipedia.org/wiki/ZIP_(%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%83%95%E3%82%A9%E3%83%BC%E3%83%9E%E3%83%83%E3%83%88))
     return new Date( date.getTime() - date.getTimezoneOffset() * 60000 );
 } // end of adjust_date_for_zip()
 
@@ -461,10 +472,14 @@ var set_value = ( function () {
 var get_value = ( function () {
     if ( typeof GM_getValue != 'undefined' ) {
         return function ( name ) {
-            return GM_getValue( name );
+            var value = GM_getValue( name );
+            
+            // メモ： 値が存在しない場合、GM_getValue( name ) は undefined を返す
+            return ( value === undefined ) ? null : value;
         };
     }
     return function ( name ) {
+        // メモ： 値が存在しない場合、localStorage[ name ] は undefined を、localStorage.getItem( name ) は null を返す
         return localStorage.getItem( name );
     };
 } )(); // end of get_value()
@@ -498,7 +513,7 @@ var download_media_timeline = ( function () {
         
         ,   init : function ( screen_name, until_id, since_id, filter_info ) {
                 var self = this,
-                    is_search_timeline = self.is_search_timeline = /\/search/.test( w.location.href );
+                    is_search_timeline = self.is_search_timeline = judge_search_timeline();
                 
                 self.filter_info = filter_info;
                 self.timeline_status = ( is_search_timeline ) ? 'search' : 'media';
@@ -1097,6 +1112,7 @@ var download_media_timeline = ( function () {
                     } )
                     .css( {
                         'margin' : '16px 16px 12px 16px'
+                    ,   'color' : '#66757f'
                     } );
                 
                 jq_range_container.find( 'table' )
@@ -1106,6 +1122,7 @@ var download_media_timeline = ( function () {
                         'width' : '560px'
                     ,   'margin' : '0 auto 0 auto'
                     ,   'text-align' : 'center'
+                    ,   'color' : '#14171a'
                     } );
                 
                 jq_range_container.find( 'span.range_text' )
@@ -1126,6 +1143,9 @@ var download_media_timeline = ( function () {
                     } )
                     .css( {
                         'width' : '160px'
+                    ,   'color' : '#14171a'
+                    ,   'background' : 'white'
+                    ,   'border-color' : '#e6ecf0'
                     } )
                     .parent()
                     .css( {
@@ -1151,6 +1171,9 @@ var download_media_timeline = ( function () {
                     } )
                     .css( {
                         'width' : '48px'
+                    ,   'color' : '#14171a'
+                    ,   'background' : 'white'
+                    ,   'border-color' : '#e6ecf0'
                     } );
                 
                 jq_range_container.find( 'tr.date-range' )
@@ -1191,7 +1214,21 @@ var download_media_timeline = ( function () {
                 set_change_event( jq_until_id, jq_until_date );
                 
                 self.jq_limit_tweet_number = jq_limit_tweet_number = jq_range_container.find( 'input[name="limit"]' );
-                jq_limit_tweet_number.val( limit_tweet_number );
+                jq_limit_tweet_number
+                    .val( limit_tweet_number )
+                    .change( function ( event ) {
+                        var val = jq_limit_tweet_number.val().trim();
+                        
+                        if ( ! val ) {
+                            val = 0;
+                        }
+                        else if ( isNaN( val ) ) {
+                            val = OPTIONS.OPTIONS.DEFAULT_LIMIT_TWEET_NUMBER;
+                        }
+                        limit_tweet_number = parseInt( val, 10 );
+                        set_value( SCRIPT_NAME + '_limit_tweet_number', String( limit_tweet_number ) );
+                        jq_limit_tweet_number.val( limit_tweet_number );
+                    } );
                 
                 self.jq_checkbox_container = jq_checkbox_container = $( '<div />' )
                     .addClass( SCRIPT_NAME + '_checkbox_container' )
@@ -1241,6 +1278,7 @@ var download_media_timeline = ( function () {
                     ,   'overflow' : 'scroll'
                     ,   'border' : 'inset ghostwhite 1px'
                     ,   'padding' : '4px 4px 4px 4px'
+                    ,   'color' : '#14171a'
                     ,   'background' : 'snow'
                     } );
                 
@@ -1426,8 +1464,9 @@ var download_media_timeline = ( function () {
                 
                 self.jq_since_id.trigger( 'change', [ true ] );
                 self.jq_until_id.trigger( 'change', [ true ] );
+                self.jq_limit_tweet_number.trigger( 'change', [ true ] );
                 
-                var is_search_timeline = self.is_search_timeline = /\/search/.test( w.location.href ),
+                var is_search_timeline = self.is_search_timeline = judge_search_timeline(),
                     screen_name = get_screen_name(),
                     since_id = self.jq_since_id.val(),
                     until_id = self.jq_until_id.val(),
@@ -1455,11 +1494,13 @@ var download_media_timeline = ( function () {
                 self.log( 'Image : ' + ( support_image ? 'on' : 'off' ), ' / GIF : ' + ( support_gif ? 'on' : 'off' ), ' / Video : ' + ( support_video ? 'on' : 'off' ) );
                 self.log_hr()
                 
+                /*
                 limit_tweet_number = parseInt( self.jq_limit_tweet_number.val().trim(), 10 );
                 if ( isNaN( limit_tweet_number ) ) {
                     limit_tweet_number = 0;
                 }
                 set_value( SCRIPT_NAME + '_limit_tweet_number', String( limit_tweet_number ) );
+                */
                 
                 if ( since_id && until_id && ( decimal_cmp( until_id, since_id ) <= 0 ) ) {
                     self.log( '[Error]', 'Wrong range' );
@@ -1846,28 +1887,12 @@ var download_media_timeline = ( function () {
 } )(); // end of download_media_timeline()
 
 
-
-function insert_download_button( jq_target_container ) {
-    var is_search_timeline = /\/search/.test( w.location.href );
-    
-    if ( ! jq_target_container ) {
-        if ( is_search_timeline ) {
-            jq_target_container = $( '.SearchNavigation ul.AdaptiveFiltersBar-nav' );
-        }
-        else {
-            jq_target_container = $( 'li[data-element-term="photos_and_videos_toggle"]' );
-        }
-    }
-    if ( jq_target_container.length <= 0 ) {
-        return;
-    }
-    
-    var button_id = SCRIPT_NAME + '_download_button',
-        jq_button = $( '<a />' )
-            .text( ( is_search_timeline ) ? OPTIONS.DOWNLOAD_BUTTUN_TEXT_SEARCHTIMELINE : OPTIONS.DOWNLOAD_BUTTON_TEXT )
+var check_timeline_headers = ( function () {
+    var button_class_name = SCRIPT_NAME + '_download_button',
+        jq_button_template = $( '<a />' )
+            .addClass( button_class_name )
             .attr( {
-                id : button_id
-            ,   href : '#'
+                href : '#'
             ,   title : OPTIONS.DOWNLOAD_BUTTON_HELP_TEXT
             } )
             .css( {
@@ -1876,6 +1901,8 @@ function insert_download_button( jq_target_container ) {
             ,   'text-decoration' : 'underline'
             } )
             .click( function ( event ) {
+                var jq_button = $( this );
+                
                 event.stopPropagation();
                 event.preventDefault();
                 
@@ -1886,28 +1913,106 @@ function insert_download_button( jq_target_container ) {
                 return false;
             } );
     
-    if ( is_search_timeline ) {
-        $( '#' + button_id ).parents( '.' + SCRIPT_NAME + '_download_button_container' ).remove();
+    function check_search_timeline( jq_node ) {
+        if ( ! judge_search_timeline() ) {
+            return;
+        }
         
-        var jq_button_container = $( '<li class="AdaptiveFiltersBar-item u-borderUserColor" />' ).addClass( SCRIPT_NAME + '_download_button_container' );
+        var jq_target_container = ( jq_node.hasClass( 'AdaptiveFiltersBar-nav' ) ) ? jq_node : jq_node.find( 'ul.AdaptiveFiltersBar-nav' );
         
-        jq_button.css( {
-            'font-size' : '14px'
-        ,   'font-weight' : 'bold'
-        ,   'line-height' : '20px'
-        ,   'color' : '#657786'
-        ,   'display' : 'block'
-        ,   'padding' : '16px'
-        } );
+        if ( jq_target_container.length <= 0 ) {
+            return;
+        }
+
+        var jq_button = jq_button_template.clone( true ),
+            jq_button_container = $( '<li class="AdaptiveFiltersBar-item u-borderUserColor" />' ).addClass( SCRIPT_NAME + '_download_button_container' );
+        
+        jq_target_container.find( '.' + SCRIPT_NAME + '_download_button_container' ).remove();
+        
+        jq_button
+            .text( OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG )
+            .css( {
+                'font-size' : '14px'
+            ,   'font-weight' : 'bold'
+            ,   'line-height' : '20px'
+            //,   'color' : '#657786'
+            ,   'display' : 'block'
+            ,   'padding' : '16px'
+            } );
+        
         jq_button_container.append( jq_button );
         jq_target_container.append( jq_button_container );
-    }
-    else {
-        $( '#' + button_id ).remove();
-        jq_target_container.append( jq_button );
-    }
+        
+    } // end of check_search_timeline()
     
-} // end of insert_download_button()
+    
+    function check_profile_nav( jq_node ) {
+        var jq_target_container = ( jq_node.hasClass( 'ProfileNav-list' ) ) ? jq_node : jq_node.find( 'ul.ProfileNav-list' );
+        
+        if ( jq_target_container.length <= 0 ) {
+            return;
+        }
+        
+        var jq_button = jq_button_template.clone( true ),
+            jq_button_container = $( '<li class="ProfileNav-item" />' ).addClass( SCRIPT_NAME + '_download_button_container' ),
+            jq_insert_point = jq_target_container.find( '.ProfileNav-item--more' );
+        
+        jq_target_container.find( '.' + SCRIPT_NAME + '_download_button_container' ).remove();
+        
+        jq_button
+            .text( OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG )
+            .css( {
+                'font-size' : '14px'
+            ,   'font-weight' : 'bold'
+            ,   'line-height' : '20px'
+            //,   'color' : '#657786'
+            ,   'display' : 'block'
+            ,   'padding' : '16px'
+            } );
+        
+        jq_button_container.append( jq_button );
+        if ( 0 < jq_insert_point.length ) {
+            jq_insert_point.before( jq_button_container );
+        }
+        else {
+            jq_target_container.append( jq_button_container );
+        }
+    } // end of check_profile_nav()
+    
+    
+    function check_profile_heading( jq_node ) {
+        var jq_target_container = ( jq_node.attr( 'data-element-term' ) == 'photos_and_videos_toggle' ) ? jq_node : jq_node.find( 'li[data-element-term="photos_and_videos_toggle"]' );
+        
+        if ( jq_target_container.length <= 0 ) {
+            return;
+        }
+        
+        var jq_button = jq_button_template.clone( true );
+        
+        jq_button
+            .text( OPTIONS.DOWNLOAD_BUTTON_TEXT )
+            .css( {
+            } );
+        
+        jq_target_container.find( '.' + button_class_name ).remove();
+        jq_target_container.append( jq_button );
+        
+    } // end of check_profile_heading()
+    
+    
+    return function ( node ) {
+        if ( ( ! node ) || ( node.nodeType != 1 ) ) {
+            return false;
+        }
+        
+        var jq_node = $( node );
+        
+        check_profile_nav( jq_node );
+        check_profile_heading( jq_node );
+        check_search_timeline( jq_node );
+    };
+
+} )(); // end of check_timeline_headers()
 
 
 function add_media_link_to_tweet( jq_tweet ) {
@@ -2233,6 +2338,11 @@ function check_media_tweets( node ) {
 } // end of check_media_tweets()
 
 
+function insert_download_buttons() {
+    check_timeline_headers( d.body );
+} // end of insert_download_buttons()
+
+
 function insert_media_links() {
     if ( ( ! OPTIONS.IMAGE_DOWNLOAD_LINK ) && ( ! OPTIONS.VIDEO_DOWNLOAD_LINK ) ) {
         return;
@@ -2243,7 +2353,7 @@ function insert_media_links() {
 
 function start_mutation_observer() {
     new MutationObserver( function ( records ) {
-        var is_search_timeline = /\/search/.test( w.location.href );
+        var is_search_timeline = judge_search_timeline();
         
         records.forEach( function ( record ) {
             var target = record.target;
@@ -2257,18 +2367,7 @@ function start_mutation_observer() {
                     check_media_tweets( addedNode );
                 }
                 
-                var jq_node = $( addedNode ),
-                    jq_target_container;
-                
-                if ( is_search_timeline ) {
-                    jq_target_container = ( jq_node.hasClass( 'AdaptiveFiltersBar-nav' ) ) ? jq_node : jq_node.find( 'ul.AdaptiveFiltersBar-nav' );
-                }
-                else {
-                    jq_target_container = ( jq_node.attr( 'data-element-term' ) == 'photos_and_videos_toggle' ) ? jq_node : jq_node.find( 'li[data-element-term="photos_and_videos_toggle"]' );
-                }
-                if ( 0 < jq_target_container.length ) {
-                    insert_download_button( jq_target_container );
-                }
+                check_timeline_headers( addedNode );
             } );
         } );
     } ).observe( d.body, { childList : true, subtree : true } );
@@ -2290,7 +2389,7 @@ function initialize( user_options ) {
         return;
     }
     
-    if ( ( get_value( SCRIPT_NAME + '_limit_tweet_number' ) !== undefined ) && ( ! isNaN( get_value( SCRIPT_NAME + '_limit_tweet_number' ) ) ) ) {
+    if ( ( get_value( SCRIPT_NAME + '_limit_tweet_number' ) !== null ) && ( ! isNaN( get_value( SCRIPT_NAME + '_limit_tweet_number' ) ) ) ) {
         limit_tweet_number = parseInt( get_value( SCRIPT_NAME + '_limit_tweet_number' ), 10 );
     }
     else {
@@ -2298,7 +2397,7 @@ function initialize( user_options ) {
         set_value( SCRIPT_NAME + '_limit_tweet_number',  String( limit_tweet_number ) );
     }
     
-    if ( get_value( SCRIPT_NAME + '_support_image' ) !== undefined ) {
+    if ( get_value( SCRIPT_NAME + '_support_image' ) !== null ) {
         support_image = ( get_value( SCRIPT_NAME + '_support_image' ) !== '0' );
     }
     else {
@@ -2306,7 +2405,7 @@ function initialize( user_options ) {
         set_value( SCRIPT_NAME + '_support_image', ( support_image ) ? '1' : '0' );
     }
 
-    if ( get_value( SCRIPT_NAME + '_support_gif' ) !== undefined ) {
+    if ( get_value( SCRIPT_NAME + '_support_gif' ) !== null ) {
         support_gif = ( get_value( SCRIPT_NAME + '_support_gif' ) !== '0' );
     }
     else {
@@ -2314,7 +2413,7 @@ function initialize( user_options ) {
         set_value( SCRIPT_NAME + '_support_gif', ( support_gif ) ? '1' : '0' );
     }
     
-    if ( get_value( SCRIPT_NAME + '_support_video' ) !== undefined ) {
+    if ( get_value( SCRIPT_NAME + '_support_video' ) !== null ) {
         support_video = ( get_value( SCRIPT_NAME + '_support_video' ) !== '0' );
     }
     else {
@@ -2352,7 +2451,7 @@ function initialize( user_options ) {
         support_video = false;
     } )
     .complete( function () {
-        insert_download_button();
+        insert_download_buttons();
         insert_media_links();
         start_mutation_observer();
     } );
