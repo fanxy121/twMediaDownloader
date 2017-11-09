@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.8
+// @version         0.1.1.9
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -355,7 +355,7 @@ function get_tweet_id( url ) {
         return url;
     }
 
-    if ( ! url.trim().match( /^https?:\/\/.*?\/(\d+)(?:$|\/)/ ) ) {
+    if ( ! url.trim().match( /^https?:\/\/twitter\.com\/[^\/]+\/[^\/]+\/(\d+)(?:$|\/)/ ) ) {
         return null;
     }
     
@@ -660,17 +660,28 @@ var download_media_timeline = ( function () {
                     image_urls = [];
                 
                 tweet_url = jq_tweet.find( '.js-permalink' ).attr( 'href' );
-                if ( tweet_url && tweet_url.charAt( 0 ) == '/' ) {
+                if ( ! tweet_url ) {
+                    // '.js-stream-item' のうち、Tweet でないため、Permalink が取得できないものもある（「タグ付けされたユーザー」等）
+                    return;
+                }
+                if ( tweet_url.charAt( 0 ) == '/' ) {
                     tweet_url = 'https://twitter.com' + tweet_url;
                 }
-                tweet_info.tweet_url = tweet_url;
-                tweet_info.tweet_id = jq_tweet.find( '*[data-tweet-id]' ).attr( 'data-tweet-id' );
-                tweet_info.tweet_screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' );
-                tweet_info.timestamp_ms = timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' );
-                tweet_info.date = date = new Date( parseInt( timestamp_ms, 10 ) );
-                tweet_info.datetime = ( timestamp_ms ) ? format_date( date, 'YYYY/MM/DD hh:mm:ss' ) : '';
-                tweet_info.zipdate = adjust_date_for_zip( date );
-                tweet_info.tweet_text = jq_tweet.find( '.js-tweet-text, .tweet-text' ).text();
+                
+                try {
+                    tweet_info.tweet_url = tweet_url;
+                    tweet_info.tweet_id = jq_tweet.find( '*[data-tweet-id]' ).attr( 'data-tweet-id' );
+                    tweet_info.tweet_screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' );
+                    tweet_info.timestamp_ms = timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' );
+                    tweet_info.date = date = new Date( parseInt( timestamp_ms, 10 ) );
+                    tweet_info.datetime = ( timestamp_ms ) ? format_date( date, 'YYYY/MM/DD hh:mm:ss' ) : '';
+                    tweet_info.zipdate = adjust_date_for_zip( date );
+                    tweet_info.tweet_text = jq_tweet.find( '.js-tweet-text, .tweet-text' ).text();
+                }
+                catch ( error ) {
+                    // '.js-stream-item' のうち、Tweet でないため、screen_name 等が取得できないものもある（「タグ付けされたユーザー」等）
+                    return;
+                }
                 
                 if ( support_image ) {
                     jq_tweet.find( '.AdaptiveMedia-photoContainer img' ).each( function () {
