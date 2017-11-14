@@ -4,8 +4,6 @@ body {
     margin: 0;
     background: #f8f4e6;
     min-width: 600px;
-}
-body * {
     font-family: 'ヒラギノ角ゴ Pro W3','Hiragino Kaku Gothic Pro','メイリオ',Meiryo,'ＭＳ Ｐゴシック',sans-serif;
     vertical-align: middle;
 }
@@ -71,7 +69,7 @@ span.header {
 }
 
 span.note {
-    font-size: 10px;
+    font-size: 12px;
 }
 
 span.text,

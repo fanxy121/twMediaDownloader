@@ -41,4 +41,13 @@
 ,   "VIDEO_DOWNLOAD_LINK" : {
         "message" : "動画ダウンロードリンク"
     }
+,   "ENABLE_FILTER" : {
+        "message" : "[試用] 検索タイムラインでのメディアフィルタ(filter:～使用)"
+    }
+,   "FAST_LOW_ACCURACY" : {
+        "message" : "速い・低精度"
+    }
+,   "SLOW_HIGH_ACCURACY" : {
+        "message" : "遅い・高精度"
+    }
 }

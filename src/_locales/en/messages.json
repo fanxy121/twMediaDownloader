@@ -41,4 +41,13 @@
 ,   "VIDEO_DOWNLOAD_LINK" : {
         "message" : "Video Download Links"
     }
+,   "ENABLE_FILTER" : {
+        "message" : "*Trial* Media filtering on search-timeline (using 'filter:~')"
+    }
+,   "FAST_LOW_ACCURACY" : {
+        "message" : "Fast, but low accuracy"
+    }
+,   "SLOW_HIGH_ACCURACY" : {
+        "message" : "Slow, but high accuracy"
+    }
 }

@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.9
+// @version         0.1.1.10
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -70,6 +70,8 @@ THE SOFTWARE.
 var OPTIONS = {
     IMAGE_DOWNLOAD_LINK : true // true: 個別ツイートに画像ダウンロードリンクを追加
 ,   VIDEO_DOWNLOAD_LINK : true // true: 個別ツイートに動画ダウンロードリンクを追加
+,   ENABLE_FILTER : true // true: 検索タイムライン使用時に filter: をかける
+    // TODO: 検索タイムライン使用時、filter: をかけない場合にヒットする画像や動画が、filter: をかけるとヒットしないことがある
     
 ,   OPERATION : true // true: 動作中、false: 停止中
 
@@ -105,6 +107,9 @@ var $ = jQuery,
         }
     } )(),
     IS_CHROME_EXTENSION = !! ( w.is_chrome_extension ),
+    IS_FIREFOX = ( 0 <= w.navigator.userAgent.toLowerCase().indexOf( 'firefox' ) ),
+    BASE64_BLOB_THRESHOLD = 30000000, // Data URL(base64) → Blob URL 切替の閾値(Byte) (Firefox用)(TODO: 値は要調整)
+    // TODO: Firefox の場合、Blob URL だと警告が出る場合がある・その一方、Data URL 形式だと大きいサイズはダウンロード不可
     
     OAUTH2_TOKEN_API_URL = 'https://api.twitter.com/oauth2/token',
     ENCODED_TOKEN_CREDENTIAL = 'VGdITk1hN1daRTdDeGkxSmJrQU1ROlNIeTltQk1CUE5qM1kxN2V0OUJGNGc1WGVxUzR5M3ZrZVcyNFB0dERjWQ==',
@@ -220,22 +225,34 @@ var object_extender = ( function () {
 
 
 // 参考: [日付フォーマットなど 日付系処理 - Qiita](http://qiita.com/osakanafish/items/c64fe8a34e7221e811d0)
-function format_date( date, format ) {
+function format_date( date, format, flag_utc ) {
     if ( ! format ) {
         format = 'YYYY-MM-DD hh:mm:ss.SSS';
     }
     
-    var msec = ( '00' + date.getMilliseconds() ).slice( -3 ),
+    var msec = ( '00' + ( ( flag_utc ) ? date.getUTCMilliseconds() : date.getMilliseconds() ) ).slice( -3 ),
         msec_index = 0;
     
-    format = format
-        .replace( /YYYY/g, date.getFullYear() )
-        .replace( /MM/g, ( '0' + ( 1 + date.getMonth() ) ).slice( -2 ) )
-        .replace( /DD/g, ( '0' + date.getDate() ).slice( -2 ) )
-        .replace( /hh/g, ( '0' + date.getHours() ).slice( -2 ) )
-        .replace( /mm/g, ( '0' + date.getMinutes() ).slice( -2 ) )
-        .replace( /ss/g, ( '0' + date.getSeconds() ).slice( -2 ) )
-        .replace( /S/g, function ( all ) { return msec.charAt( msec_index ++ ) } );
+    if ( flag_utc ) {
+        format = format
+            .replace( /YYYY/g, date.getUTCFullYear() )
+            .replace( /MM/g, ( '0' + ( 1 + date.getUTCMonth() ) ).slice( -2 ) )
+            .replace( /DD/g, ( '0' + date.getUTCDate() ).slice( -2 ) )
+            .replace( /hh/g, ( '0' + date.getUTCHours() ).slice( -2 ) )
+            .replace( /mm/g, ( '0' + date.getUTCMinutes() ).slice( -2 ) )
+            .replace( /ss/g, ( '0' + date.getUTCSeconds() ).slice( -2 ) )
+            .replace( /S/g, function ( all ) { return msec.charAt( msec_index ++ ) } );
+    }
+    else {
+        format = format
+            .replace( /YYYY/g, date.getFullYear() )
+            .replace( /MM/g, ( '0' + ( 1 + date.getMonth() ) ).slice( -2 ) )
+            .replace( /DD/g, ( '0' + date.getDate() ).slice( -2 ) )
+            .replace( /hh/g, ( '0' + date.getHours() ).slice( -2 ) )
+            .replace( /mm/g, ( '0' + date.getMinutes() ).slice( -2 ) )
+            .replace( /ss/g, ( '0' + date.getSeconds() ).slice( -2 ) )
+            .replace( /S/g, function ( all ) { return msec.charAt( msec_index ++ ) } );
+    }
     
     return format;
 } // end of format_date()
@@ -388,10 +405,10 @@ function adjust_date_for_zip( date ) {
 
 
 function save_blob( filename, blob ) {
-    var blobURL = URL.createObjectURL( blob ),
+    var blob_url = URL.createObjectURL( blob ),
         download_button = d.createElement( 'a' );
     
-    download_button.href = blobURL;
+    download_button.href = blob_url;
     download_button.download = filename;
     
     d.documentElement.appendChild( download_button );
@@ -400,6 +417,32 @@ function save_blob( filename, blob ) {
     
     download_button.parentNode.removeChild( download_button );
 } // end of save_blob()
+
+
+function save_base64( filename, base64, mimetype ) {
+    var mimetype = ( mimetype ) ? mimetype : 'application/octet-stream',
+        data_url = 'data:' + mimetype + ';base64,' + base64,
+        download_button = d.createElement( 'a' );
+    
+    download_button.href = data_url;
+    download_button.download = filename;
+    
+    d.documentElement.appendChild( download_button );
+    
+    download_button.click();
+    
+    download_button.parentNode.removeChild( download_button );
+} // end of save_base64()
+
+
+function string_to_arraybuffer( source_string ) {
+    var charcode_list = [].map.call( source_string, function ( ch ) {
+            return ch.charCodeAt( 0 );
+        } ),
+        arraybuffer = ( new Uint16Array( charcode_list ) ).buffer;
+    
+    return arraybuffer;
+} // end of string_to_arraybuffer()
 
 
 var fetch_url = ( function () {
@@ -779,25 +822,48 @@ var download_media_timeline = ( function () {
                         html_data.q = self.search_query;
                     }
                     else {
-                        html_data.q = 'exclude:retweets from:' + self.screen_name + ' max_id:' + self.current_max_position;
+                        html_data.q = 'from:' + self.screen_name;
+                        
+                        //var until_date = tweet_id_to_date( self.current_max_position );
+                        //
+                        //if ( until_date && until_date.getTime && ( ! isNaN( until_date.getTime() ) ) ) {
+                        //    html_data.q += ' until:' + format_date( until_date, 'YYYY-MM-DD_hh:mm:ss_GMT', true );
+                        //}
+                        //else {
+                        //    html_data.q += ' max_id:' + self.current_max_position;
+                        //}
+                        html_data.q += ' max_id:' + self.current_max_position;
+                        
                         if ( self.since_id ) {
-                            html_data.q += ' since_id:'+ self.since_id;
+                            //var since_date = tweet_id_to_date( self.since_id );
+                            //
+                            //if ( since_date && since_date.getTime && ( ! isNaN( since_date.getTime() ) ) ) {
+                            //    html_data.q += ' since:' + format_date( since_date, 'YYYY-MM-DD_hh:mm:ss_GMT', true );
+                            //}
+                            //else {
+                            //    html_data.q += ' since_id:' + self.since_id;
+                            //}
+                            html_data.q += ' since_id:' + self.since_id;
                         }
+                        
+                        html_data.q += ' exclude:retweets';
                     }
                     
-                    if ( self.filter_info.image ) {
-                        filters.push( 'filter:images' );
+                    if ( OPTIONS.ENABLE_FILTER ) {
+                        if ( self.filter_info.image ) {
+                            filters.push( 'filter:images' );
+                        }
+                        if ( self.filter_info.gif ) {
+                            filters.push( 'card_name:animated_gif' );
+                        }
+                        if ( self.filter_info.video ) {
+                            //filters.push( 'filter:videos' ); // TODO: 外部サイトの動画(YouTube等)は未サポート← 'filter:videos' だとそれらも含む
+                            filters.push( 'filter:native_video' );
+                        }
+                        
+                        html_data.q += ' ' + filters.join( ' OR ' )
+                        html_data.q += ' -filter:vine -filter:periscope'; // TODO: Vine, Periscope は未サポート
                     }
-                    if ( self.filter_info.gif ) {
-                        filters.push( 'card_name:animated_gif' );
-                    }
-                    if ( self.filter_info.video ) {
-                        //filters.push( 'filter:videos' ); // TODO: 外部サイトの動画(YouTube等)は未サポート← 'filter:videos' だとそれらも含む
-                        filters.push( 'filter:native_video' );
-                    }
-                    
-                    html_data.q += ' ' + filters.join( ' OR ' )
-                    html_data.q += ' -filter:vine -filter:periscope'; // TODO: Vine, Periscope は未サポート
                     
                     if ( self.is_search_timeline ) {
                         w.location.href.replace( /^.*\?/, '' ).split( '&' ).forEach( function ( param ) {
@@ -1493,11 +1559,13 @@ var download_media_timeline = ( function () {
                     min_datetime = '',
                     total_tweet_counter = 0,
                     total_image_counter = 0,
-                    MediaTimeline = self.MediaTimeline = object_extender( TemplateMediaTimeline ).init( screen_name, until_id, since_id, {
+                    total_file_size = 0,
+                    filter_info = {
                         image : support_image
                     ,   gif : support_gif
                     ,   video : support_video
-                    } ),
+                    },
+                    MediaTimeline = self.MediaTimeline = object_extender( TemplateMediaTimeline ).init( screen_name, until_id, since_id, filter_info ),
                     zip;
                 
                 if ( MediaTimeline.search_query ) {
@@ -1597,15 +1665,30 @@ var download_media_timeline = ( function () {
                     }
                     
                     var filename_head = ( self.is_search_timeline ) ? ( 'search(' + format_date( new Date(), 'YYYYMMDD_hhmmss' ) + ')' ) : screen_name,
-                        filename_prefix = [ filename_head, ( min_id + '(' + datetime_to_timestamp( min_datetime ) + ')' ), ( max_id + '(' + datetime_to_timestamp( max_datetime ) + ')' ), 'media' ].join( '-' );
+                        filename_prefix = [ filename_head, ( min_id + '(' + datetime_to_timestamp( min_datetime ) + ')' ), ( max_id + '(' + datetime_to_timestamp( max_datetime ) + ')' ), 'media' ].join( '-' ),
+                        log_text = self.jq_log.text(),
+                        zip_content_type = 'blob';
                     
-                    zip.file( filename_prefix + '.log', self.jq_log.text() );
+                    zip.file( filename_prefix + '.log', log_text );
+                    total_file_size += string_to_arraybuffer( log_text ).byteLength;
                     
-                    zip.generateAsync( { type : 'blob' } ).then( function ( zip_content ) {
+                    if ( IS_FIREFOX && ( total_file_size < BASE64_BLOB_THRESHOLD ) ) {
+                        zip_content_type =  'base64';
+                    }
+                    //self.log( 'Total: ', total_file_size, 'byte' );
+                    
+                    zip.generateAsync( { type : zip_content_type } ).then( function ( zip_content ) {
                         var zip_filename = filename_prefix + '.zip';
                         
-                        save_blob( zip_filename, zip_content );
-                        
+                        // TODO: ZIP を保存しようとすると、Firefox でセキュリティ警告が出る場合がある（「このファイルを開くのは危険です」(This file is not commonly downloaded.)）
+                        // → Firefox のみ、Blob URL ではなく、Data URL(Base64) で様子見
+                        if ( zip_content_type == 'base64' ) {
+                            //self.log( 'Base64: ', zip_content.length, 'byte' );
+                            save_base64( zip_filename, zip_content );
+                        }
+                        else {
+                            save_blob( zip_filename, zip_content );
+                        }
                         zip = null;
                     } );
                     
@@ -1691,7 +1774,7 @@ var download_media_timeline = ( function () {
                                 zip.file( image_filename, image_result.arraybuffer, {
                                     date : current_tweet_info.zipdate
                                 } );
-                                
+                                total_file_size += image_result.arraybuffer.byteLength;
                                 delete image_result.arraybuffer;
                                 image_result.arraybuffer = null;
                             }
@@ -2110,11 +2193,17 @@ function add_media_link_to_tweet( jq_tweet ) {
                     }
                 } );
                 
-                zip.generateAsync( { type : 'blob' } ).then( function ( zip_content ) {
+                zip.generateAsync( { type : ( IS_FIREFOX ) ? 'base64' : 'blob' } ).then( function ( zip_content ) {
                     var zip_filename = [ screen_name, tweet_id, timestamp, media_prefix ].join( '-' ) + '.zip';
                     
-                    save_blob( zip_filename, zip_content );
-                    
+                    // TODO: ZIP を保存しようとすると、Firefox でセキュリティ警告が出る場合がある（「このファイルを開くのは危険です」(This file is not commonly downloaded.)）
+                    // → Firefox のみ、Blob URL ではなく、Data URL(Base64) で様子見
+                    if ( IS_FIREFOX ) {
+                        save_base64( zip_filename, zip_content );
+                    }
+                    else {
+                        save_blob( zip_filename, zip_content );
+                    }
                     zip = null;
                     
                     clickable = true;
@@ -2417,7 +2506,7 @@ function initialize( user_options ) {
         support_image = OPTIONS.DEFAULT_SUPPORT_IMAGE;
         set_value( SCRIPT_NAME + '_support_image', ( support_image ) ? '1' : '0' );
     }
-
+    
     if ( get_value( SCRIPT_NAME + '_support_gif' ) !== null ) {
         support_gif = ( get_value( SCRIPT_NAME + '_support_gif' ) !== '0' );
     }

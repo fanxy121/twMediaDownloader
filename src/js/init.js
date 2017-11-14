@@ -77,6 +77,7 @@ var twMediaDownloader_chrome_init = ( function() {
             OPERATION : get_bool
         ,   IMAGE_DOWNLOAD_LINK : get_bool
         ,   VIDEO_DOWNLOAD_LINK : get_bool
+        ,   ENABLE_FILTER : get_bool
         };
     
     return get_init_function( 'GET_OPTIONS', option_name_to_function_map );

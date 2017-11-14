@@ -4,6 +4,7 @@ $().ready( function () {
     var RADIO_KV_LIST = [
             { key : 'IMAGE_DOWNLOAD_LINK', val : true }
         ,   { key : 'VIDEO_DOWNLOAD_LINK', val : true }
+        ,   { key : 'ENABLE_FILTER', val : true }
         ],
         INT_KV_LIST = [
         ],
