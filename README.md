@@ -19,7 +19,7 @@ Google Chrome で、
 
 
 ### ユーザースクリプト版（Greasemonkey / Tampermonkey）
-Firefox＋~~[Greasemonkey](https://addons.mozilla.org/ja/firefox/addon/greasemonkey/)~~[Tampermonkey](https://addons.mozilla.org/ja/firefox/addon/tampermonkey/)、Google Chrome＋[Tampermonkey](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=ja) の環境で、  
+Firefox＋<s>[Greasemonkey](https://addons.mozilla.org/ja/firefox/addon/greasemonkey/)</s>[Tampermonkey](https://addons.mozilla.org/ja/firefox/addon/tampermonkey/)、Google Chrome＋[Tampermonkey](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=ja) の環境で、  
 
 > [Twitter メディアダウンローダ (twMediaDownloader.user.js)](https://github.com/furyutei/twMediaDownloader/raw/master/src/js/twMediaDownloader.user.js)  
                                 
