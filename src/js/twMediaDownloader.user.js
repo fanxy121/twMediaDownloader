@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.10
+// @version         0.1.1.11
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -11,9 +11,8 @@
 // @grant           GM_setValue
 // @grant           GM_getValue
 // @connect         twitter.com
-// @connect         api.twitter.com
-// @connect         pbs.twimg.com
-// @connect         video.twimg.com
+// @connect         twimg.com
+// @connect         cdn.vine.co
 // @description     Download images of user's media-timeline on Twitter.
 // ==/UserScript==
 
@@ -75,6 +74,9 @@ var OPTIONS = {
     
 ,   OPERATION : true // true: 動作中、false: 停止中
 
+,   CACHE_OAUTH2_ACCESS_TOKEN : true // true: OAuth2 の Access Token を再利用する
+,   QUICK_LOAD_GIF : true // true: アニメーションGIF（から変換された動画）の情報(URL)取得を簡略化
+
 ,   DEFAULT_LIMIT_TWEET_NUMBER : 100 // ダウンロードできる画像付きツイート数制限のデフォルト値
 ,   DEFAULT_SUPPORT_IMAGE : true // true: 画像をダウンロード対象にする
 ,   DEFAULT_SUPPORT_GIF : true // true: アニメーションGIF（から変換された動画）をダウンロード対象にする
@@ -91,6 +93,11 @@ if ( w[ SCRIPT_NAME + '_touched' ] ) {
     return;
 }
 w[ SCRIPT_NAME + '_touched' ] = true;
+
+if ( /^https:\/\/twitter\.com\/i\//.test( w.location.href ) ) {
+    // https://twitter.com/i/cards/～ 等では実行しない
+    return;
+}
 
 if ( ( typeof jQuery != 'function' ) || ( typeof JSZip != 'function' ) || ( typeof Decimal != 'function' ) ) {
     console.error( SCRIPT_NAME + ':', 'Library not found', typeof jQuery, typeof JSZip, typeof Decimal );
@@ -112,9 +119,11 @@ var $ = jQuery,
     // TODO: Firefox の場合、Blob URL だと警告が出る場合がある・その一方、Data URL 形式だと大きいサイズはダウンロード不可
     
     OAUTH2_TOKEN_API_URL = 'https://api.twitter.com/oauth2/token',
-    ENCODED_TOKEN_CREDENTIAL = 'VGdITk1hN1daRTdDeGkxSmJrQU1ROlNIeTltQk1CUE5qM1kxN2V0OUJGNGc1WGVxUzR5M3ZrZVcyNFB0dERjWQ==',
+    ENCODED_TOKEN_CREDENTIAL = 'a3l4WDdaTHMyRDNlZnFEYnBLOE1xbnBucjpEODV0WTg5alFvV1dWSDhvTmpJZzI4UEpmSzRTMmxvdXE1TlB4dzhWenZsS0J3U1IweA==',
+    API_RATE_LIMIT_STATUS = 'https://api.twitter.com/1.1/application/rate_limit_status.json',
     API_VIDEO_CONFIG_BASE = 'https://api.twitter.com/1.1/videos/tweet/config/#TWEETID#.json',
     API_TWEET_SHOW_BASE = 'https://api.twitter.com/1.1/statuses/show.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_reply_count=1&tweet_mode=extended&trim_user=false&include_ext_media_color=true&id=#TWEETID#',
+    GIF_VIDEO_URL_BASE = 'https://video.twimg.com/tweet_video/#VIDEO_ID#.mp4',
     
     oauth2_access_token = null,
     limit_tweet_number = OPTIONS.DEFAULT_LIMIT_TWEET_NUMBER,
@@ -344,6 +353,26 @@ function get_img_extension( img_url, extension_list ) {
 } // end of get_img_extension()
 
 
+function is_video_url( url ) {
+    return /\.mp4(?:$|\?)/.test( url );
+} // end of is_video_url()
+
+
+function get_video_extension( video_url ) {
+    if ( ! is_video_url( video_url ) ) {
+        return 'mp4';
+    }
+    return video_url.match( /\.([^.?]*)(?:$|\?)/ )[ 1 ];
+} // end of get_video_extension()
+
+
+function get_gif_video_url_from_playable_media( jq_target ) {
+    // 動画GIFの背景画像 URL から MP4 の URL を割り出す
+    // background-image:url('https://pbs.twimg.com/tweet_video_thumb/#VIDEO_ID#.jpg') => https://video.twimg.com/tweet_video/#VIDEO_ID#.mp4
+    return GIF_VIDEO_URL_BASE.replace( '#VIDEO_ID#', jq_target.find( '.PlayableMedia-player' ).attr( 'style' ).match( /tweet_video_thumb\/([^.]+)\./ )[ 1 ] )
+} // end of get_gif_video_url_from_playable_media()
+
+
 function get_screen_name( url ) {
     if ( ! url ) {
         url = w.location.href;
@@ -562,10 +591,29 @@ var download_media_timeline = ( function () {
                 self.timeline_status = ( is_search_timeline ) ? 'search' : 'media';
                 //self.timeline_status = 'search'; // ※テスト用
                 self.screen_name = screen_name;
-                self.search_query = ( is_search_timeline ) ?
-                    $( '#search-query' ).val().replace( /-?(?:filter:(?:images|videos|native_video|media|vine|periscope)|card_name:animated_gif)(?:\s+OR\s+)?/g, ' ' ).replace( /\s+/g, ' ' ).trim() :
-                    // 本スクリプトと競合するフィルタの類は削除しておく
-                    null;
+                
+                if ( is_search_timeline ) {
+                    var search_query = $( '#search-query' ).val();
+                    
+                    if ( OPTIONS.ENABLE_FILTER ) {
+                        // 本スクリプトと競合するフィルタの類は削除しておく
+                        search_query = search_query.replace( /-?filter:(?:media|periscope)(?:\s+OR\s+)?/g, ' ' );
+                        
+                        if ( ! self.filter_info.image ) {
+                            search_query = search_query.replace( /-?filter:(?:images)(?:\s+OR\s+)?/g, ' ' );
+                        }
+                        if ( ! self.filter_info.gif ) {
+                            search_query = search_query.replace( /-?card_name:animated_gif(?:\s+OR\s+)?/g, ' ' );
+                        }
+                        if ( ! self.filter_info.video ) {
+                            search_query = search_query.replace( /-?filter:(?:videos|native_video|vine)(?:\s+OR\s+)?/g, ' ' );
+                        }
+                    }
+                    self.search_query = search_query.replace( /\s+/g, ' ' ).trim();
+                }
+                else {
+                    self.search_query = null;
+                }
                 
                 if ( is_search_timeline && ( ! self.search_query ) ) {
                     self.search_query = 'twitter'; // ダミー
@@ -736,18 +784,38 @@ var download_media_timeline = ( function () {
                 }
                 else if ( oauth2_access_token ) {
                     jq_tweet.find( '.AdaptiveMedia-videoContainer .PlayableMedia' ).each( function () {
-                        if ( $( this ).hasClass( 'PlayableMedia--gif' ) ) {
+                        var jq_playable_media = $( this );
+                        
+                        if ( jq_playable_media.hasClass( 'PlayableMedia--gif' ) ) {
                             if ( ! support_gif ) {
                                 return;
                             }
-                            image_urls.push( API_VIDEO_CONFIG_BASE.replace( '#TWEETID#', tweet_info.tweet_id ) );
+                            
+                            if ( OPTIONS.QUICK_LOAD_GIF ) {
+                                try {
+                                    image_urls.push( get_gif_video_url_from_playable_media( jq_playable_media ) );
+                                    tweet_info.media_quick = true;
+                                }
+                                catch ( error ) {
+                                    image_urls.push( API_VIDEO_CONFIG_BASE.replace( '#TWEETID#', tweet_info.tweet_id ) );
+                                }
+                            }
+                            else {
+                                image_urls.push( API_VIDEO_CONFIG_BASE.replace( '#TWEETID#', tweet_info.tweet_id ) );
+                            }
                             tweet_info.media_type = 'gif';
                         }
                         else {
                             if ( ! support_video ) {
                                 return;
                             }
-                            image_urls.push( API_TWEET_SHOW_BASE.replace( '#TWEETID#', tweet_info.tweet_id ) );
+                            if ( jq_playable_media.hasClass( 'PlayableMedia--vine' ) ) {
+                                image_urls.push( API_VIDEO_CONFIG_BASE.replace( '#TWEETID#', tweet_info.tweet_id ) );
+                                tweet_info.media_source = 'vine';
+                            }
+                            else {
+                                image_urls.push( API_TWEET_SHOW_BASE.replace( '#TWEETID#', tweet_info.tweet_id ) );
+                            }
                             tweet_info.media_type = 'video';
                         }
                         return false; // video は現状では 1 つのみサポート
@@ -859,10 +927,11 @@ var download_media_timeline = ( function () {
                         if ( self.filter_info.video ) {
                             //filters.push( 'filter:videos' ); // TODO: 外部サイトの動画(YouTube等)は未サポート← 'filter:videos' だとそれらも含む
                             filters.push( 'filter:native_video' );
+                            filters.push( 'filter:vine' );
                         }
                         
                         html_data.q += ' ' + filters.join( ' OR ' )
-                        html_data.q += ' -filter:vine -filter:periscope'; // TODO: Vine, Periscope は未サポート
+                        html_data.q += ' -filter:periscope'; // TODO: Periscope は未サポート
                     }
                     
                     if ( self.is_search_timeline ) {
@@ -1760,7 +1829,7 @@ var download_media_timeline = ( function () {
                         $.each( current_tweet_info.image_urls, function ( index, image_url ) {
                             var image_result = current_image_result_map[ image_url ],
                                 media_type = current_tweet_info.media_type,
-                                img_extension = ( media_type == 'image' ) ? get_img_extension( image_url ) : image_url.match( /[^\.]*$/ )[0],
+                                img_extension = ( media_type == 'image' ) ? get_img_extension( image_url ) : get_video_extension( image_url ),
                                 media_prefix = ( media_type == 'gif' ) ? 'gif' : ( ( media_type == 'image' ) ? 'img' : 'vid' );
                             
                             if ( image_result.arraybuffer ) {
@@ -1835,6 +1904,11 @@ var download_media_timeline = ( function () {
                     }
                     else if ( current_tweet_info.media_type == 'gif' ) {
                         $.each( current_tweet_info.image_urls, function ( index, video_info_url ) {
+                            if ( current_tweet_info.media_quick ) {
+                                load_image( index, video_info_url );
+                                return;
+                            }
+                            
                             $.ajax( {
                                 type : 'GET'
                             ,   url : video_info_url
@@ -1849,7 +1923,38 @@ var download_media_timeline = ( function () {
                                 current_tweet_info.image_urls[ index ] = video_url;
                                 current_tweet_info.video_info = json.track;
                                 
-                                if ( /\.mp4$/.test( video_url ) ) {
+                                if ( is_video_url( video_url ) ) {
+                                    load_image( index, video_url );
+                                }
+                                else {
+                                    push_image_result( video_url, null, 'not supported' );
+                                }
+                            } )
+                            .error( function ( jqXHR, textStatus, errorThrown ) {
+                                console.error( video_info_url, textStatus );
+                                push_image_result( video_info_url, null, textStatus );
+                            } )
+                            .complete( function () {
+                            } );
+                        } );
+                    }
+                    else if ( ( current_tweet_info.media_type == 'video' ) && ( current_tweet_info.media_source == 'vine' ) ) {
+                        $.each( current_tweet_info.image_urls, function ( index, video_info_url ) {
+                            $.ajax( {
+                                type : 'GET'
+                            ,   url : video_info_url
+                            ,   dataType : 'json'
+                            ,   headers : {
+                                    'Authorization' : 'Bearer ' + oauth2_access_token
+                                }
+                            } )
+                            .success( function ( json ) {
+                                var video_url = json.track.playbackUrl;
+                                
+                                current_tweet_info.image_urls[ index ] = video_url;
+                                current_tweet_info.video_info = json.track;
+                                
+                                if ( is_video_url( video_url ) ) {
                                     load_image( index, video_url );
                                 }
                                 else {
@@ -1893,7 +1998,7 @@ var download_media_timeline = ( function () {
                                 }
                                 catch ( error ) {
                                     console.error( tweet_info_url, error );
-                                    // TODO: Vine 等は未サポート
+                                    // TODO: 外部動画等は未サポート
                                 }
                                 
                                 current_tweet_info.video_info = video_info;
@@ -2288,7 +2393,7 @@ function add_media_link_to_tweet( jq_tweet ) {
             var screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' ),
                 timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' ),
                 timestamp = ( timestamp_ms ) ? format_date( new Date( parseInt( timestamp_ms, 10 ) ), 'YYYYMMDD_hhmmss' ) : '',
-                filename = [ screen_name, tweet_id, timestamp, media_prefix + '1' ].join( '-' ) + '.mp4',
+                filename = [ screen_name, tweet_id, timestamp, media_prefix + '1' ].join( '-' ) + '.' + get_video_extension( video_url ),
                 clickable = true;
             
             jq_media_link
@@ -2321,74 +2426,117 @@ function add_media_link_to_tweet( jq_tweet ) {
             jq_media_link_container.css( 'display', 'inline-block' );
         } // end of activate_video_download_link()
         
-        if ( jq_playable_media.hasClass( 'PlayableMedia--gif' ) ) {
-            var video_info_url = API_VIDEO_CONFIG_BASE.replace( '#TWEETID', tweet_id );
+        if ( jq_playable_media.hasClass( 'PlayableMedia--gif' ) || jq_playable_media.hasClass( 'PlayableMedia--vine' ) ) {
+            var media_prefix = jq_playable_media.hasClass( 'PlayableMedia--gif' ) ? 'gif' : 'vid';
             
-            $.ajax( {
-                type : 'GET'
-            ,   url : video_info_url
-            ,   dataType : 'json'
-            ,   headers : {
-                    'Authorization' : 'Bearer ' + oauth2_access_token
-                }
-            } )
-            .success( function ( json ) {
-                var video_url = json.track.playbackUrl;
+            jq_media_link.click( function ( event ) {
+                jq_media_link.off( 'click' );
                 
-                if ( ! /\.mp4$/.test( video_url ) ) {
-                    return;
-                }
-                activate_video_download_link( video_url, 'gif' );
-            } )
-            .error( function ( jqXHR, textStatus, errorThrown ) {
-                console.error( video_info_url, textStatus );
-            } )
-            .complete( function () {
-            } );
-        }
-        else {
-            var tweet_info_url = API_TWEET_SHOW_BASE.replace( '#TWEETID', tweet_id );
-            
-            $.ajax( {
-                type : 'GET'
-            ,   url : tweet_info_url
-            ,   dataType : 'json'
-            ,   headers : {
-                    'Authorization' : 'Bearer ' + oauth2_access_token
-                }
-            } )
-            .success( function ( json ) {
-                var video_info = null,
-                    video_url = null,
-                    variants = [],
-                    max_bitrate = -1;
+                event.stopPropagation();
+                event.preventDefault();
                 
-                try {
-                    video_info = json.extended_entities.media[ 0 ].video_info;
-                    variants = video_info.variants;
+                if ( OPTIONS.QUICK_LOAD_GIF && ( media_prefix == 'gif' ) ) {
+                    try {
+                        var video_url = get_gif_video_url_from_playable_media( jq_playable_media );
+                        
+                        activate_video_download_link( video_url, media_prefix );
+                        
+                        jq_media_link.click();
+                        
+                        return;
+                    }
+                    catch ( error ) {
+                    }
+                }
+                
+                var video_info_url = API_VIDEO_CONFIG_BASE.replace( '#TWEETID#', tweet_id );
+                
+                $.ajax( {
+                    type : 'GET'
+                ,   url : video_info_url
+                ,   dataType : 'json'
+                ,   headers : {
+                        'Authorization' : 'Bearer ' + oauth2_access_token
+                    }
+                } )
+                .success( function ( json ) {
+                    var video_url = json.track.playbackUrl;
                     
-                    variants.forEach( function ( variant ) {
-                        if ( ( variant.content_type == 'video/mp4' ) && ( variant.bitrate ) && ( max_bitrate < variant.bitrate ) ) {
-                            video_url = variant.url;
-                            max_bitrate = variant.bitrate;
-                        }
-                    } );
-                }
-                catch ( error ) {
-                    console.error( tweet_info_url, error );
-                    // TODO: Vine 等は未サポート
-                }
-                
-                if ( ! video_url ) {
-                    return;
-                }
-                activate_video_download_link( video_url, 'video' );
-            } )
-            .error( function ( jqXHR, textStatus, errorThrown ) {
-                console.error( tweet_info_url, textStatus );
-            } )
-            .complete( function () {
+                    if ( ! is_video_url( video_url ) ) {
+                        jq_media_link_container.css( 'display', 'none' );
+                        return;
+                    }
+                    activate_video_download_link( video_url, media_prefix );
+                    
+                    jq_media_link.click();
+                } )
+                .error( function ( jqXHR, textStatus, errorThrown ) {
+                    console.error( video_info_url, textStatus );
+                    
+                    jq_media_link_container.css( 'display', 'none' );
+                } )
+                .complete( function () {
+                } );
             } );
+            
+            jq_media_link_container.css( 'display', 'inline-block' );
+        }
+        else if ( jq_playable_media.hasClass( 'PlayableMedia--video' ) ) {
+        
+            jq_media_link.click( function ( event ) {
+                jq_media_link.off( 'click' );
+                
+                event.stopPropagation();
+                event.preventDefault();
+                
+                var tweet_info_url = API_TWEET_SHOW_BASE.replace( '#TWEETID#', tweet_id );
+                
+                $.ajax( {
+                    type : 'GET'
+                ,   url : tweet_info_url
+                ,   dataType : 'json'
+                ,   headers : {
+                        'Authorization' : 'Bearer ' + oauth2_access_token
+                    }
+                } )
+                .success( function ( json ) {
+                    var video_info = null,
+                        video_url = null,
+                        variants = [],
+                        max_bitrate = -1;
+                    
+                    try {
+                        video_info = json.extended_entities.media[ 0 ].video_info;
+                        variants = video_info.variants;
+                        
+                        variants.forEach( function ( variant ) {
+                            if ( ( variant.content_type == 'video/mp4' ) && ( variant.bitrate ) && ( max_bitrate < variant.bitrate ) ) {
+                                video_url = variant.url;
+                                max_bitrate = variant.bitrate;
+                            }
+                        } );
+                    }
+                    catch ( error ) {
+                        console.error( tweet_info_url, error );
+                        // TODO: 外部動画等は未サポート
+                    }
+                    
+                    if ( ! video_url ) {
+                        jq_media_link_container.css( 'display', 'none' );
+                        return;
+                    }
+                    activate_video_download_link( video_url, 'vid' );
+                    
+                    jq_media_link.click();
+                } )
+                .error( function ( jqXHR, textStatus, errorThrown ) {
+                    console.error( tweet_info_url, textStatus );
+                } )
+                .complete( function () {
+                } );
+            } );
+            
+            jq_media_link_container.css( 'display', 'inline-block' );
         }
     }
     
@@ -2523,41 +2671,89 @@ function initialize( user_options ) {
         set_value( SCRIPT_NAME + '_support_video', ( support_video ) ? '1' : '0' );
     }
     
-    $.ajax( {
-        type : 'POST'
-    ,   url : OAUTH2_TOKEN_API_URL
-    ,   headers : {
-            'Authorization' : 'Basic '+ ENCODED_TOKEN_CREDENTIAL
-        ,   'Content-Type' : 'application/x-www-form-urlencoded;charset=UTF-8'
-        }
-    ,   data : {
-            'grant_type' : 'client_credentials'
-        }
-    ,   dataType : 'json'
-    ,   xhrFields : {
-            withCredentials : false // Cross-Origin Resource Sharing(CORS)用設定
-            // TODO: Chrome 拡張機能だと false であっても Cookie が送信されてしまう
-            // → webRequest を有効にして、background.js でリクエストヘッダから Cookie を取り除くようにして対応
-        }
-    } )
-    .success( function ( json ) {
-        oauth2_access_token = json.access_token;
-    } )
-    .error( function ( jqXHR, textStatus, errorThrown ) {
-        console.error( OAUTH2_TOKEN_API_URL, textStatus );
-        // TODO: Cookies 中に auth_token が含まれていると、403 (code:99)が返ってきてしまう
-        // → auth_token は Twitter ログイン中保持されるため、Cookies を送らないようにする対策が取れない場合、対応は困難
-        oauth2_access_token = null;
-        support_image = true;
-        support_gif = false;
-        support_video = false;
-    } )
-    .complete( function () {
+    
+    function start_main() {
         insert_download_buttons();
         insert_media_links();
         start_mutation_observer();
-    } );
+    } // end of start_main()
     
+    
+    function get_access_token() {
+        oauth2_access_token = null;
+        set_value( SCRIPT_NAME + '_oauth2_access_token', '' );
+        
+        $.ajax( {
+            type : 'POST'
+        ,   url : OAUTH2_TOKEN_API_URL
+        ,   headers : {
+                'Authorization' : 'Basic '+ ENCODED_TOKEN_CREDENTIAL
+            ,   'Content-Type' : 'application/x-www-form-urlencoded;charset=UTF-8'
+            }
+        ,   data : {
+                'grant_type' : 'client_credentials'
+            }
+        ,   dataType : 'json'
+        ,   xhrFields : {
+                withCredentials : false // Cross-Origin Resource Sharing(CORS)用設定
+                // TODO: Chrome 拡張機能だと false であっても Cookie が送信されてしまう
+                // → webRequest を有効にして、background.js でリクエストヘッダから Cookie を取り除くようにして対応
+            }
+        } )
+        .success( function ( json ) {
+            oauth2_access_token = json.access_token;
+            if ( OPTIONS.CACHE_OAUTH2_ACCESS_TOKEN ) {
+                set_value( SCRIPT_NAME + '_oauth2_access_token', oauth2_access_token );
+            }
+        } )
+        .error( function ( jqXHR, textStatus, errorThrown ) {
+            console.error( OAUTH2_TOKEN_API_URL, textStatus );
+            // TODO: Cookies 中に auth_token が含まれていると、403 (code:99)が返ってきてしまう
+            // → auth_token は Twitter ログイン中保持されるため、Cookies を送らないようにする対策が取れない場合、対応は困難
+            oauth2_access_token = null;
+            set_value( SCRIPT_NAME + '_oauth2_access_token', '' );
+            support_image = true;
+            support_gif = false;
+            support_video = false;
+        } )
+        .complete( function () {
+            start_main();
+        } );
+    } // end of get_access_token()
+    
+    
+    oauth2_access_token = ( OPTIONS.CACHE_OAUTH2_ACCESS_TOKEN ) ? get_value( SCRIPT_NAME + '_oauth2_access_token' ) : null;
+    
+    if ( oauth2_access_token ) {
+        $.ajax( {
+            type : 'GET'
+        ,   url : API_RATE_LIMIT_STATUS
+        ,   data : {
+                'resources' : 'statuses'
+            }
+        ,   dataType : 'json'
+        ,   headers : {
+                'Authorization' : 'Bearer ' + oauth2_access_token
+            }
+        } )
+        .success( function ( json ) {
+            if ( ( ! json ) || ( ! json.rate_limit_context ) || ( ! json.resources ) || ( ! json.resources.statuses ) ) {
+                get_access_token();
+                return;
+            }
+            start_main();
+        } )
+        .error( function ( jqXHR, textStatus, errorThrown ) {
+            console.error( API_RATE_LIMIT_STATUS, textStatus );
+            get_access_token();
+        } )
+        .complete( function () {
+        } );
+    }
+    else {
+        get_access_token();
+    }
+
 } // end of initialize()
 
 // }

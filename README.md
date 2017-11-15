@@ -19,21 +19,22 @@ Google Chrome で、
 
 
 ### ユーザースクリプト版（Greasemonkey / Tampermonkey）
-Firefox＋[Greasemonkey](https://addons.mozilla.org/ja/firefox/addon/greasemonkey/)、Google Chrome＋[Tampermonkey](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=ja) の環境で、  
+Firefox＋~~[Greasemonkey](https://addons.mozilla.org/ja/firefox/addon/greasemonkey/)~~[Tampermonkey](https://addons.mozilla.org/ja/firefox/addon/tampermonkey/)、Google Chrome＋[Tampermonkey](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=ja) の環境で、  
 
 > [Twitter メディアダウンローダ (twMediaDownloader.user.js)](https://github.com/furyutei/twMediaDownloader/raw/master/src/js/twMediaDownloader.user.js)  
                                 
 をクリックし、指示に従ってインストール。  
+※ Firefox では Quantum(57) + Greasemonkey 4 より動作しなくなった（代わりに Tampermonkey を使用すること）。  
 
 
 ■ 使い方
 ---
-[Web 版公式 Twitter](https://twitter.com/) 上で、ユーザータイムラインを開くと、「メディア」の右に下向き矢印のリンクが挿入される。  
+[Web 版公式 Twitter](https://twitter.com/) 上で、ユーザータイムラインや検索タイムラインを開くと、「メディア↓」のようなリンクが挿入される。  
 ![下向き矢印のリンク](https://cdn-ak.f.st-hatena.com/images/fotolife/f/furyu-tei/20160723/20160723224518.jpg)  
 
 これをクリックするとダイアログが表示されるので、[開始]ボタンをクリックすると、原寸画像/動画の ZIP 化が開始される。  
 ※ ZIP 化の進捗は、下部にログ出力される。  
-![ダイアログ](https://cdn-ak.f.st-hatena.com/images/fotolife/f/furyu-tei/20160723/20160723224527.jpg)  
+![ダイアログ](https://cdn-ak2.f.st-hatena.com/images/fotolife/f/furyu-tei/20171029/20171029090641.png)  
 
 ZIP 化が完了するか、もしくは[停止]を押すと、対象となる画像/動画ファイルをまとめた ZIP ファイルがダウンロードされる。  
 ※ ログの内容も ZIP の中に保存される。
@@ -41,11 +42,15 @@ ZIP 化が完了するか、もしくは[停止]を押すと、対象となる�
 必要に応じて、保存対象となるツイートの Tweet ID 範囲、および、ツイートの制限数を指定可能。  
 ※デフォルト(範囲空白)の状態では、Tweet ID 範囲は全てで、ツイートの制限数にのみ制限される。  
 
+また、各メディア付ツイートにもダウンロード用のリンクが追加され、個別にダウンロードすることも可能。  
+※ Chrome 拡張機能の場合、この機能は ON/OFF できる。  
+
 
 ■ 外部ライブラリなど
 ---
 - [jQuery](https://jquery.com/)  
 - [JSZip](https://stuk.github.io/jszip/)  
+- [decimal.js](https://github.com/MikeMcl/decimal.js)
 
 
 ■ 関連記事
