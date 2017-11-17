@@ -2,6 +2,9 @@
 
 'use strict';
 
+w.chrome = ( ( typeof browser != 'undefined' ) && browser.runtime ) ? browser : chrome;
+
+
 function get_bool( value ) {
     if ( value === undefined ) {
         return null;

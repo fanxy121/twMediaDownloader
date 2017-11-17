@@ -1,5 +1,11 @@
 ( function ( w, d ) {
 
+w.chrome = ( ( typeof browser != 'undefined' ) && browser.runtime ) ? browser : chrome;
+
+
+var IS_EDGE = ( 0 <= w.navigator.userAgent.toLowerCase().indexOf( 'edge' ) );
+
+
 $().ready( function () {
     var RADIO_KV_LIST = [
             { key : 'IMAGE_DOWNLOAD_LINK', val : true }
@@ -24,7 +30,7 @@ $().ready( function () {
             return;
         }
         if ( ( value == 'OPTIONS' ) && ( jq_elm.parent().prop( 'tagName' ) == 'H1' ) ) {
-            text += ' ( version ' + chrome.app.getDetails().version + ' )';
+            text += ' ( version ' + chrome.runtime.getManifest().version + ' )';
         }
         if ( jq_elm.val() ) {
             jq_elm.val( text );
@@ -165,7 +171,8 @@ $().ready( function () {
         
         function set_operation( next_operation ) {
             var button_text = ( next_operation ) ? ( chrome.i18n.getMessage( 'STOP' ) ) : ( chrome.i18n.getMessage( 'START' ) ),
-                icon_path = ( next_operation) ? ( '../img/icon_16.png' ) : ( '../img/icon_16-gray.png' );
+                path_to_img = ( IS_EDGE ) ? 'img' : '../img',
+                icon_path = ( next_operation ) ? ( path_to_img + '/icon_16.png' ) : ( path_to_img + '/icon_16-gray.png' );
             
             jq_operation.val( button_text );
             chrome.browserAction.setIcon( { path : icon_path } );

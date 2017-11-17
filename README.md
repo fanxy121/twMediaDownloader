@@ -18,6 +18,14 @@ Google Chrome で、
 より拡張機能を追加する。  
 
 
+### Firefox Quantum (WebExtentions)版  
+Firefox Quantum で、  
+
+> [Twitter メディアダウンローダ – Firefox 向けアドオン](https://addons.mozilla.org/ja/firefox/addon/tw-media-downloader/?src=userprofile)  
+
+よりアドオンを追加する。  
+
+
 ### ユーザースクリプト版（Greasemonkey / Tampermonkey）
 Firefox＋<s>[Greasemonkey](https://addons.mozilla.org/ja/firefox/addon/greasemonkey/)</s>[Tampermonkey](https://addons.mozilla.org/ja/firefox/addon/tampermonkey/)、Google Chrome＋[Tampermonkey](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=ja) の環境で、  
 
