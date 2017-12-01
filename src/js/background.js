@@ -37,13 +37,16 @@ function on_message( message, sender, sendResponse ) {
                 name = String( name );
                 response[ name ] = localStorage[ ( ( namespace ) ? ( String( namespace ) + '_' ) : '' ) + name ];
             } );
-            break;
+            
+            sendResponse( response );
+            
+            return;
         
         default:
-            break;
+            var flag_async = zip_request_handler( message, sender, sendResponse );
+            
+            return flag_async;
     }
-    
-    sendResponse( response );
 }  // end of on_message()
 
 

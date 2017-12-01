@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.12
+// @version         0.1.1.13
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -81,26 +81,33 @@ var OPTIONS = {
 ,   DEFAULT_SUPPORT_IMAGE : true // true: 画像をダウンロード対象にする
 ,   DEFAULT_SUPPORT_GIF : true // true: アニメーションGIF（から変換された動画）をダウンロード対象にする
 ,   DEFAULT_SUPPORT_VIDEO : true // true: 動画をダウンロード対象にする（未サポート）
+
+,   ENABLE_ZIPREQUEST : true // true: ZipRequest を使用してバックグラウンドでダウンロード＆アーカイブ(拡張機能の場合)
 };
 
 // }
 
 
 // ■ 共通変数 {
-var SCRIPT_NAME = 'twMediaDownloader';
+var SCRIPT_NAME = 'twMediaDownloader',
+    DEBUG = false;
 
 if ( w[ SCRIPT_NAME + '_touched' ] ) {
     return;
 }
 w[ SCRIPT_NAME + '_touched' ] = true;
 
-if ( /^https:\/\/twitter\.com\/i\//.test( w.location.href ) ) {
-    // https://twitter.com/i/cards/～ 等では実行しない
+if ( /^https:\/\/twitter\.com\/i\/cards/.test( w.location.href ) ) {
+    // https://twitter.com/i/cards/～ では実行しない
     return;
 }
 
-if ( ( typeof jQuery != 'function' ) || ( typeof JSZip != 'function' ) || ( typeof Decimal != 'function' ) ) {
-    console.error( SCRIPT_NAME + ':', 'Library not found', typeof jQuery, typeof JSZip, typeof Decimal );
+if ( ! OPTIONS.ENABLE_ZIPREQUEST ) {
+    delete w.ZipRequest;
+}
+
+if ( ( typeof jQuery != 'function' ) || ( ( typeof JSZip != 'function' ) && ( typeof ZipRequest != 'function' ) ) || ( typeof Decimal != 'function' ) ) {
+    console.error( SCRIPT_NAME + ':', 'Library not found - ', 'jQuery:', typeof jQuery, 'JSZip:', typeof JSZip, 'ZipRequest:', typeof ZipRequest, 'Decimal:', typeof Decimal );
     return;
 }
 
@@ -174,6 +181,22 @@ switch ( LANGUAGE ) {
 
 
 // ■ 関数 {
+function log_debug() {
+    if ( ! DEBUG ) {
+        return;
+    }
+    var arg_list = [ '[' + SCRIPT_NAME + ']', '(' + ( new Date().toISOString() ) + ')' ];
+    
+    console.log.apply( console, arg_list.concat( to_array( arguments ) ) );
+} // end of log_debug()
+
+
+function log_error() {
+    var arg_list = [ '[' + SCRIPT_NAME + ']', '(' + ( new Date().toISOString() ) + ')' ];
+    
+    console.error.apply( console, arg_list.concat( to_array( arguments ) ) );
+} // end of log_error()
+
 
 // 参考: [複数のクラス名の存在を確認（判定） | jQuery逆引き | Webサイト制作支援 | ShanaBrian Website](http://shanabrian.com/web/jquery/has-classes.php)
 $.fn.hasClasses = function( selector, or_flag ) {
@@ -183,7 +206,7 @@ $.fn.hasClasses = function( selector, or_flag ) {
     
     if ( typeof selector === 'string' ) {
         selector = selector.trim();
-        class_names = ( selector.match( /^\./ ) ) ? selector.replace( /^\./, '' ).split( '.' ) : selector.split( ' ' )
+        class_names = ( selector.match( /^\./ ) ) ? selector.replace( /^\./, '' ).split( '.' ) : selector.split( ' ' );
     }
     else {
         class_names = selector;
@@ -211,9 +234,11 @@ function to_array( array_like_object ) {
 
 var object_extender = ( function () {
     function object_extender( base_object ) {
-        var template = object_extender.template,
-            base_object = template.prototype = base_object,
-            expanded_object = new template(),
+        var template = object_extender.template;
+        
+        template.prototype = base_object;
+        
+        var expanded_object = new template(),
             object_list = to_array( arguments );
         
         object_list.shift();
@@ -250,7 +275,9 @@ function format_date( date, format, flag_utc ) {
             .replace( /hh/g, ( '0' + date.getUTCHours() ).slice( -2 ) )
             .replace( /mm/g, ( '0' + date.getUTCMinutes() ).slice( -2 ) )
             .replace( /ss/g, ( '0' + date.getUTCSeconds() ).slice( -2 ) )
-            .replace( /S/g, function ( all ) { return msec.charAt( msec_index ++ ) } );
+            .replace( /S/g, function ( all ) {
+                return msec.charAt( msec_index ++ );
+            } );
     }
     else {
         format = format
@@ -260,7 +287,9 @@ function format_date( date, format, flag_utc ) {
             .replace( /hh/g, ( '0' + date.getHours() ).slice( -2 ) )
             .replace( /mm/g, ( '0' + date.getMinutes() ).slice( -2 ) )
             .replace( /ss/g, ( '0' + date.getSeconds() ).slice( -2 ) )
-            .replace( /S/g, function ( all ) { return msec.charAt( msec_index ++ ) } );
+            .replace( /S/g, function ( all ) {
+                return msec.charAt( msec_index ++ );
+            } );
     }
     
     return format;
@@ -315,9 +344,26 @@ function datetime_to_tweet_id( datetime ) {
 } // end of datetime_to_tweet_id()
 
 
-function decimal_cmp( tweet_id1, tweet_id2 ) {
+function bignum_cmp( tweet_id1, tweet_id2 ) {
     return new Decimal( tweet_id1 ).cmp( tweet_id2 );
-} // end of decimal_cmp()
+} // end of bignum_cmp()
+
+
+var get_jq_html_fragment = ( function () {
+    if ( ( ! d.implementation ) || ( typeof d.implementation.createHTMLDocument != 'function' ) ) {
+        return function ( html ) {
+            return $( '<div/>' ).html( html );
+        };
+    }
+    
+    // 解析段階での余分なネットワークアクセス（画像等の読み込み）抑制
+    var html_document = d.implementation.createHTMLDocument(''),
+        range = html_document.createRange();
+    
+    return function ( html ) {
+        return $( range.createContextualFragment( html ) );
+    };
+} )(); // end of get_jq_html_fragment()
 
 
 function get_img_url( img_url, kind ) {
@@ -343,8 +389,9 @@ function get_img_url_orig( img_url ) {
 
 
 function get_img_extension( img_url, extension_list ) {
-    var extension = '',
-        extension_list = ( extension_list ) ? extension_list : [ 'png', 'jpg', 'gif' ];
+    var extension = '';
+    
+    extension_list = ( extension_list ) ? extension_list : [ 'png', 'jpg', 'gif' ];
     
     if ( img_url.match( new RegExp( '\.(' + extension_list.join('|') + ')' ) ) ) {
         extension = RegExp.$1;
@@ -369,7 +416,7 @@ function get_video_extension( video_url ) {
 function get_gif_video_url_from_playable_media( jq_target ) {
     // 動画GIFの背景画像 URL から MP4 の URL を割り出す
     // background-image:url('https://pbs.twimg.com/tweet_video_thumb/#VIDEO_ID#.jpg') => https://video.twimg.com/tweet_video/#VIDEO_ID#.mp4
-    return GIF_VIDEO_URL_BASE.replace( '#VIDEO_ID#', jq_target.find( '.PlayableMedia-player' ).attr( 'style' ).match( /tweet_video_thumb\/([^.]+)\./ )[ 1 ] )
+    return GIF_VIDEO_URL_BASE.replace( '#VIDEO_ID#', jq_target.find( '.PlayableMedia-player' ).attr( 'style' ).match( /tweet_video_thumb\/([^.]+)\./ )[ 1 ] );
 } // end of get_gif_video_url_from_playable_media()
 
 
@@ -418,7 +465,7 @@ function judge_search_timeline( url ) {
 
 
 function datetime_to_timestamp( datetime ) {
-    return datetime.replace( /[\/:]/g, '' ).replace( / /g, '_' )
+    return datetime.replace( /[\/:]/g, '' ).replace( / /g, '_' );
 } // end of datetime_to_timestamp()
 
 
@@ -433,35 +480,36 @@ function adjust_date_for_zip( date ) {
 } // end of adjust_date_for_zip()
 
 
-function save_blob( filename, blob ) {
-    var blob_url = URL.createObjectURL( blob ),
-        download_button = d.createElement( 'a' );
+function download_url( filename, url ) {
+    var download_button = d.createElement( 'a' );
     
-    download_button.href = blob_url;
+    download_button.href = url;
     download_button.download = filename;
     
-    d.documentElement.appendChild( download_button );
+    document.documentElement.appendChild( download_button );
     
     download_button.click();
     
     download_button.parentNode.removeChild( download_button );
-} // end of save_blob()
+} // end of download_url()
 
 
-function save_base64( filename, base64, mimetype ) {
-    var mimetype = ( mimetype ) ? mimetype : 'application/octet-stream',
-        data_url = 'data:' + mimetype + ';base64,' + base64,
-        download_button = d.createElement( 'a' );
+function download_blob( filename, blob ) {
+    var blob_url = URL.createObjectURL( blob );
     
-    download_button.href = data_url;
-    download_button.download = filename;
+    download_url( filename, blob_url );
+} // end of download_blob()
+
+
+function download_base64( filename, base64, mimetype ) {
+    if ( ! mimetype ) {
+        mimetype = 'application/octet-stream';
+    }
     
-    d.documentElement.appendChild( download_button );
+    var data_url = 'data:' + mimetype + ';base64,' + base64;
     
-    download_button.click();
-    
-    download_button.parentNode.removeChild( download_button );
-} // end of save_base64()
+    download_url( filename, data_url );
+} // end of download_base64()
 
 
 function string_to_arraybuffer( source_string ) {
@@ -569,19 +617,9 @@ var download_media_timeline = ( function () {
         //   '922337203685477580' < '9223372036854775807' // => true
         //   '922337203685477581' < '9223372036854775807' // => false になってしまう
         //     ↓
-        //   decimal_cmp( '922337203685477581', '9223372036854775807' ) < 0 // => true
+        //   bignum_cmp( '922337203685477581', '9223372036854775807' ) < 0 // => true
         
         ,   timeline_status : null // 'media' / 'search' / 'end' / 'error' / 'stop'
-        ,   screen_name : null
-        ,   search_query : null
-        ,   until_id : null
-        ,   since_id : null
-        ,   current_min_id : null
-        ,   current_max_position : null
-        ,   tweet_info_list : null
-        
-        ,   media_timeline_parameters : null
-        ,   search_timeline_parameters : null
         
         ,   init : function ( screen_name, until_id, since_id, filter_info ) {
                 var self = this,
@@ -619,11 +657,13 @@ var download_media_timeline = ( function () {
                     self.search_query = 'twitter'; // ダミー
                 }
                 self.since_id = ( since_id ) ? since_id : null;
-                self.current_max_position = self.current_min_id = self.until_id = ( until_id ) ? until_id : self.DEFAULT_UNTIL_ID;
+                self.fetched_min_id = self.until_id = ( until_id ) ? until_id : self.DEFAULT_UNTIL_ID;
                 self.tweet_info_list = [];
                 
                 self.media_timeline_parameters = {
-                    api_endpoint : {
+                    max_position : self.until_id
+                    
+                ,   api_endpoint : {
                         url : 'https://twitter.com/i/profiles/show/' + ( ( self.screen_name ) ? self.screen_name : 'twitter' ) + '/media_timeline'
                     ,   data : {
                             include_available_features : 1
@@ -636,7 +676,10 @@ var download_media_timeline = ( function () {
                 };
                 
                 self.search_timeline_parameters = {
-                    is_first : true
+                    api_max_position : null
+                    // ※ API で指定する max_position は数値ではなく、"TWEET-(from tweet id)-(to tweet id)-(長い文字列)==-T-0" のような文字列であることに注意
+                    //    最初はわからないため、HTML より data-min-position を読み取って使用する
+                
                 ,   html_endpoint : {
                         url : 'https://twitter.com/search'
                     ,   data : {
@@ -670,7 +713,9 @@ var download_media_timeline = ( function () {
                     tweet_info = self.tweet_info_list.shift();
                 
                 if ( tweet_info ) {
-                    if ( ( self.since_id ) && ( decimal_cmp( tweet_info.tweet_id, self.since_id ) <= 0 ) ) {
+                    var check_tweet_id = ( tweet_info.retweet_id || tweet_info.tweet_id );
+                    
+                    if ( ( self.since_id ) && ( bignum_cmp( check_tweet_id, self.since_id ) <= 0 ) ) {
                         self.timeline_status = 'end';
                         
                         callback( {
@@ -679,7 +724,8 @@ var download_media_timeline = ( function () {
                         } );
                         return self;
                     }
-                    if ( decimal_cmp( self.current_min_id, tweet_info.tweet_id ) <= 0 ) {
+                    
+                    if ( bignum_cmp( self.fetched_min_id, check_tweet_id ) <= 0 ) {
                         if ( self.timeline_status == 'stop' ) {
                             callback( {
                                 tweet_info : null
@@ -690,7 +736,7 @@ var download_media_timeline = ( function () {
                         return self.fetch_tweet_info( callback );
                     }
                     
-                    self.current_min_id = tweet_info.tweet_id;
+                    self.fetched_min_id = check_tweet_id;
                     
                     callback( {
                         tweet_info : tweet_info
@@ -702,20 +748,18 @@ var download_media_timeline = ( function () {
                 
                 switch ( self.timeline_status ) {
                     case 'media' :
-                        self._get_next_media_timeline( function () {
+                        self.__get_next_media_timeline( function () {
                             return self.fetch_tweet_info( callback );
                         } );
                         break;
                     
                     case 'search' :
-                        self._get_next_search_timeline( function () {
+                        self.__get_next_search_timeline( function () {
                             return self.fetch_tweet_info( callback );
                         } );
                         break;
                     
-                    case 'stop' :
-                    case 'error' :
-                    default :
+                    default : // 'stop' / 'error' etc.
                         callback( {
                             tweet_info : tweet_info
                         ,   timeline_status : self.timeline_status
@@ -731,7 +775,241 @@ var download_media_timeline = ( function () {
                 self.timeline_status = 'stop';
             } // end of stop()
         
-        ,   _get_last_note_ts : function () {
+        ,   __get_next_media_timeline : function ( callback ) {
+                var self = this,
+                    media_timeline_parameters = self.media_timeline_parameters,
+                    api_endpoint = media_timeline_parameters.api_endpoint,
+                    data = api_endpoint.data;
+                
+                data.last_note_ts = self.__get_last_note_ts();
+                data.max_position = media_timeline_parameters.max_position;
+                
+                $.getJSON( api_endpoint.url, data )
+                .success( function ( json ) {
+                    var tweet_info_list = self.tweet_info_list,
+                        tweet_count = 0,
+                        min_tweet_id = self.DEFAULT_UNTIL_ID,
+                        jq_html_fragment = get_jq_html_fragment( json.items_html );
+                    
+                    jq_html_fragment.find( '.js-stream-item' ).each( function () {
+                        var tweet_info = self.__get_tweet_info( $( this ) );
+                        
+                        if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) || ( ! tweet_info.media_type ) ) {
+                            return;
+                        }
+                        tweet_info_list.push( tweet_info );
+                        
+                        if ( bignum_cmp( tweet_info.tweet_id, min_tweet_id ) < 0 ) {
+                            min_tweet_id = tweet_info.tweet_id;
+                        }
+                        tweet_count ++;
+                    } );
+                    
+                    if ( json.min_position ) {
+                        media_timeline_parameters.max_position = json.min_position;
+                    }
+                    else if ( bignum_cmp( min_tweet_id, media_timeline_parameters.max_position ) < 0 ) {
+                        media_timeline_parameters.max_position = min_tweet_id;
+                    }
+                    else {
+                        self.timeline_status = 'search';
+                    }
+                    
+                    if ( ! json.has_more_items ) {
+                        self.timeline_status = 'search';
+                    }
+                } )
+                .error( function ( jqXHR, textStatus, errorThrown ) {
+                    log_error( api_endpoint.url, textStatus );
+                    self.timeline_status = 'error';
+                } )
+                .complete( function () {
+                    callback();
+                } );
+            } // end of _get_next_media_timeline()
+        
+        ,   __get_next_search_timeline : function ( callback ) {
+                var self = this,
+                    search_timeline_parameters = self.search_timeline_parameters,
+                    api_endpoint = search_timeline_parameters.api_endpoint,
+                    api_data = api_endpoint.data,
+                    filters = [];
+                
+                if ( ! search_timeline_parameters.api_max_position ) {
+                    // 初めに HTML から data-min-position を取得する必要あり
+                    return self.__get_first_search_timeline( callback );
+                }
+                
+                api_data.last_note_ts = self.__get_last_note_ts();
+                api_data.max_position = search_timeline_parameters.api_max_position;
+                
+                $.getJSON( api_endpoint.url, api_data )
+                .success( function ( json ) {
+                    var tweet_info_list = self.tweet_info_list,
+                        tweet_count = 0,
+                        json_inner = ( json.inner ) ? json.inner : ( ( json.items_html && json.min_position ) ? json : null );
+                        // items_html/min_position が json.inner ではなく、json 直下にある場合もある（未ログイン時など）
+                    
+                    if ( ( ! json_inner ) ||  ( ! json_inner.items_html ) || ( ! json_inner.min_position ) ) {
+                        log_error( 'items not found' );
+                        self.timeline_status = 'end';
+                        return;
+                    }
+                    
+                    var jq_html_fragment = get_jq_html_fragment( json_inner.items_html );
+                
+                    
+                    jq_html_fragment.find( '.js-stream-item' ).each( function () {
+                        var tweet_info = self.__get_tweet_info( $( this ) );
+                        
+                        if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) || ( ! tweet_info.media_type ) ) {
+                            return;
+                        }
+                        tweet_info_list.push( tweet_info );
+                        tweet_count ++;
+                    } );
+                    
+                    if ( json_inner.min_position ) {
+                        if ( json_inner.min_position != search_timeline_parameters.api_max_position ) {
+                            search_timeline_parameters.api_max_position = json_inner.min_position;
+                        }
+                        else {
+                            // min_position に変化がなければ終了とみなす
+                            self.timeline_status = 'end';
+                        }
+                    }
+                    else {
+                        self.timeline_status = 'end';
+                    }
+                    // 終了判定としては使えなかった（has_more_items が false でも、実際に検索したらまだツイートがある場合がある模様）
+                    //{
+                    //if ( ! json_inner.has_more_items ) {
+                    //    self.timeline_status = 'end';
+                    //}
+                    //}
+                } )
+                .error( function ( jqXHR, textStatus, errorThrown ) {
+                    log_error( api_endpoint.url, textStatus );
+                    self.timeline_status = 'error';
+                } )
+                .complete( function () {
+                    callback();
+                } );
+                
+                return self;
+            } // end of ___get_next_search_timeline()
+        
+        ,   __get_first_search_timeline : function ( callback ) {
+                var self = this,
+                    html_endpoint = self.search_timeline_parameters.html_endpoint,
+                    html_data = html_endpoint.data,
+                    api_endpoint = self.search_timeline_parameters.api_endpoint,
+                    api_data = api_endpoint.data,
+                    filters = [];
+                
+                if ( self.is_search_timeline ) {
+                    html_data.q = self.search_query;
+                }
+                else {
+                    html_data.q = 'from:' + self.screen_name;
+                    
+                    html_data.q += ' max_id:' + Decimal.sub( self.media_timeline_parameters.max_position, 1 ).toString();
+                    
+                    if ( self.since_id ) {
+                        html_data.q += ' since_id:' + self.since_id;
+                    }
+                    
+                    html_data.q += ' exclude:retweets';
+                }
+                
+                if ( OPTIONS.ENABLE_FILTER ) {
+                    if ( self.filter_info.image ) {
+                        filters.push( 'filter:images' );
+                    }
+                    if ( self.filter_info.gif ) {
+                        filters.push( 'card_name:animated_gif' );
+                    }
+                    if ( self.filter_info.video ) {
+                        //filters.push( 'filter:videos' ); // TODO: 外部サイトの動画(YouTube等)は未サポート← 'filter:videos' だとそれらも含む
+                        filters.push( 'filter:native_video' );
+                        filters.push( 'filter:vine' );
+                    }
+                    
+                    html_data.q += ' ' + filters.join( ' OR ' );
+                    html_data.q += ' -filter:periscope'; // TODO: Periscope は未サポート
+                }
+                
+                if ( self.is_search_timeline ) {
+                    w.location.href.replace( /^.*\?/, '' ).split( '&' ).forEach( function ( param ) {
+                        var parts = param.split( '=' );
+                        
+                        if ( parts.length != 2 ) {
+                            return;
+                        }
+                        parts[ 1 ] = decodeURIComponent( parts[ 1 ] );
+                        
+                        switch ( parts[ 0 ] ) {
+                            case 's' : // follows: フォローしているユーザーのみ
+                            case 'near' : // me: 近くの場所
+                            case 'l': // 言語
+                                html_data[ parts[ 0 ] ] = parts[ 1 ];
+                                break;
+                        }
+                    } );
+                }
+                
+                api_data.q = html_data.q; // クエリは最初に設定したもので共通
+                
+                $.ajax( {
+                    type : 'GET'
+                ,   url : html_endpoint.url
+                ,   data : html_data
+                ,   dataType : 'html'
+                } )
+                .success( function ( html ) {
+                    var jq_html_fragment =  get_jq_html_fragment( html ),
+                        tweet_info_list = self.tweet_info_list,
+                        api_max_position = self.search_timeline_parameters.api_max_position = jq_html_fragment.find( '*[data-min-position]' ).attr( 'data-min-position' );
+                        // ※ data-min-position は数値ではなく、"TWEET-(from tweet id)-(to tweet id)-(長い文字列)==-T-0" みたいになっていることに注意
+                    
+                    log_debug( '__get_first_search_timeline() : data-min-position = ', api_max_position );
+                    
+                    if ( ! api_max_position ) {
+                        if ( jq_html_fragment.find( 'div.SearchEmptyTimeline' ).length <= 0 ) {
+                            log_error( '"data-min-position" not found' );
+                            self.timeline_status = 'error';
+                            return;
+                        }
+                        
+                        self.timeline_status = 'end';
+                        return;
+                    }
+                    
+                    jq_html_fragment.find( '.js-stream-item' ).each( function () {
+                        var jq_stream_item = $( this ),
+                            tweet_info = self.__get_tweet_info( jq_stream_item );
+                        
+                        if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) || ( ! tweet_info.media_type ) ) {
+                            return;
+                        }
+                        tweet_info.jq_stream_item = jq_stream_item;
+                        tweet_info.timeline_kind = 'search-timeline';
+                        
+                        tweet_info_list.push( tweet_info );
+                    } );
+                } )
+                .error( function ( jqXHR, textStatus, errorThrown ) {
+                    log_error( html_endpoint.url, textStatus );
+                    self.timeline_status = 'error';
+                } )
+                .complete( function () {
+                    callback();
+                } );
+                
+                return self;
+            } // end of __get_first_search_timeline()
+        
+        ,   __get_last_note_ts : function () {
                 var last_note_ts = null;
                 try {
                     last_note_ts = localStorage( '__DM__:latestNotificationTimestamp' );
@@ -741,19 +1019,24 @@ var download_media_timeline = ( function () {
                 last_note_ts = ( last_note_ts ) ? last_note_ts : new Date().getTime();
                 
                 return last_note_ts;
-            } // end of _get_last_note_ts()
+            } // end of __get_last_note_ts()
         
-        ,   _get_tweet_info : function ( jq_tweet ) {
+        ,   __get_tweet_info : function ( jq_tweet_container ) {
                 var tweet_info = { media_type : null },
                     tweet_url,
                     date,
                     timestamp_ms,
-                    image_urls = [];
+                    image_urls = [],
+                    jq_tweet = jq_tweet_container.find( '.js-stream-tweet' );
                 
-                tweet_url = jq_tweet.find( '.js-permalink' ).attr( 'href' );
+                if ( jq_tweet.length <= 0 ) {
+                    return null;
+                }
+                
+                tweet_url = jq_tweet_container.find( '.js-permalink' ).attr( 'href' );
                 if ( ! tweet_url ) {
                     // '.js-stream-item' のうち、Tweet でないため、Permalink が取得できないものもある（「タグ付けされたユーザー」等）
-                    return;
+                    return null;
                 }
                 if ( tweet_url.charAt( 0 ) == '/' ) {
                     tweet_url = 'https://twitter.com' + tweet_url;
@@ -761,8 +1044,10 @@ var download_media_timeline = ( function () {
                 
                 try {
                     tweet_info.tweet_url = tweet_url;
-                    tweet_info.tweet_id = jq_tweet.find( '*[data-tweet-id]' ).attr( 'data-tweet-id' );
-                    tweet_info.tweet_screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' );
+                    tweet_info.tweet_id = jq_tweet.attr( 'data-tweet-id' );
+                    tweet_info.tweet_screen_name = jq_tweet.attr( 'data-screen-name' );
+                    tweet_info.retweet_id = jq_tweet.attr( 'data-retweet-id' );
+                    tweet_info.retweeter = jq_tweet.attr( 'data-retweeter' );
                     tweet_info.timestamp_ms = timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' );
                     tweet_info.date = date = new Date( parseInt( timestamp_ms, 10 ) );
                     tweet_info.datetime = ( timestamp_ms ) ? format_date( date, 'YYYY/MM/DD hh:mm:ss' ) : '';
@@ -824,233 +1109,7 @@ var download_media_timeline = ( function () {
                 tweet_info.image_urls = image_urls;
                 
                 return tweet_info;
-            } // end of _get_tweet_info()
-        
-        ,   _get_next_media_timeline : function ( callback ) {
-                var self = this,
-                    api_endpoint = self.media_timeline_parameters.api_endpoint,
-                    data = api_endpoint.data;
-                
-                data.last_note_ts = self._get_last_note_ts();
-                data.max_position = self.current_max_position;
-                
-                $.getJSON( api_endpoint.url, data )
-                .success( function ( json ) {
-                    var tweet_info_list = self.tweet_info_list,
-                        tweet_count = 0,
-                        min_id = self.DEFAULT_UNTIL_ID;
-                    
-                    $( '<div/>' ).html( json.items_html ).find( '.js-stream-item' ).each( function () {
-                        var tweet_info = self._get_tweet_info( $( this ) );
-                        
-                        if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) || ( ! tweet_info.media_type ) ) {
-                            return;
-                        }
-                        tweet_info_list.push( tweet_info );
-                        
-                        if ( decimal_cmp( tweet_info.tweet_id, min_id ) < 0 ) {
-                            min_id = tweet_info.tweet_id;
-                        }
-                        tweet_count ++;
-                    } );
-                    
-                    if ( json.min_position ) {
-                        self.current_max_position = json.min_position;
-                    }
-                    else if ( decimal_cmp( min_id, self.current_max_position ) < 0 ) {
-                        self.current_max_position = min_id;
-                    }
-                    else {
-                        self.timeline_status = 'search';
-                    }
-                    
-                    if ( ! json.has_more_items ) {
-                        self.timeline_status = 'search';
-                    }
-                } )
-                .error( function ( jqXHR, textStatus, errorThrown ) {
-                    console.error( api_endpoint.url, textStatus );
-                    self.timeline_status = 'error';
-                } )
-                .complete( function () {
-                    callback();
-                } );
-            } // end of _get_next_media_timeline()
-        
-        ,   _get_next_search_timeline : function ( callback ) {
-                var self = this,
-                    html_endpoint = self.search_timeline_parameters.html_endpoint,
-                    html_data = html_endpoint.data,
-                    api_endpoint = self.search_timeline_parameters.api_endpoint,
-                    api_data = api_endpoint.data,
-                    filters = [];
-                
-                if ( self.search_timeline_parameters.is_first ) {
-                    if ( self.is_search_timeline ) {
-                        html_data.q = self.search_query;
-                    }
-                    else {
-                        html_data.q = 'from:' + self.screen_name;
-                        
-                        //var until_date = tweet_id_to_date( self.current_max_position );
-                        //
-                        //if ( until_date && until_date.getTime && ( ! isNaN( until_date.getTime() ) ) ) {
-                        //    html_data.q += ' until:' + format_date( until_date, 'YYYY-MM-DD_hh:mm:ss_GMT', true );
-                        //}
-                        //else {
-                        //    html_data.q += ' max_id:' + self.current_max_position;
-                        //}
-                        html_data.q += ' max_id:' + self.current_max_position;
-                        
-                        if ( self.since_id ) {
-                            //var since_date = tweet_id_to_date( self.since_id );
-                            //
-                            //if ( since_date && since_date.getTime && ( ! isNaN( since_date.getTime() ) ) ) {
-                            //    html_data.q += ' since:' + format_date( since_date, 'YYYY-MM-DD_hh:mm:ss_GMT', true );
-                            //}
-                            //else {
-                            //    html_data.q += ' since_id:' + self.since_id;
-                            //}
-                            html_data.q += ' since_id:' + self.since_id;
-                        }
-                        
-                        html_data.q += ' exclude:retweets';
-                    }
-                    
-                    if ( OPTIONS.ENABLE_FILTER ) {
-                        if ( self.filter_info.image ) {
-                            filters.push( 'filter:images' );
-                        }
-                        if ( self.filter_info.gif ) {
-                            filters.push( 'card_name:animated_gif' );
-                        }
-                        if ( self.filter_info.video ) {
-                            //filters.push( 'filter:videos' ); // TODO: 外部サイトの動画(YouTube等)は未サポート← 'filter:videos' だとそれらも含む
-                            filters.push( 'filter:native_video' );
-                            filters.push( 'filter:vine' );
-                        }
-                        
-                        html_data.q += ' ' + filters.join( ' OR ' )
-                        html_data.q += ' -filter:periscope'; // TODO: Periscope は未サポート
-                    }
-                    
-                    if ( self.is_search_timeline ) {
-                        w.location.href.replace( /^.*\?/, '' ).split( '&' ).forEach( function ( param ) {
-                            var parts = param.split( '=' );
-                            
-                            if ( parts.length != 2 ) {
-                                return;
-                            }
-                            parts[ 1 ] = decodeURIComponent( parts[ 1 ] );
-                            
-                            switch ( parts[ 0 ] ) {
-                                case 's' : // follows: フォローしているユーザーのみ
-                                case 'near' : // me: 近くの場所
-                                case 'l': // 言語
-                                    html_data[ parts[ 0 ] ] = parts[ 1 ];
-                                    break;
-                            }
-                        } );
-                    }
-                    
-                    $.ajax( {
-                        type : 'GET'
-                    ,   url : html_endpoint.url
-                    ,   data : html_data
-                    ,   dataType : 'html'
-                    } )
-                    .success( function ( html ) {
-                        var jq_result = $( '<div />' ).html( html ),
-                            tweet_info_list = self.tweet_info_list,
-                            tweet_count = 0;
-                        
-                        self.current_max_position = jq_result.find( '*[data-min-position]' ).attr( 'data-min-position' );
-                        
-                        if ( self.current_max_position ) {
-                            jq_result.find( '.js-stream-item' ).each( function () {
-                                var tweet_info = self._get_tweet_info( $( this ) );
-                                
-                                if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) || ( ! tweet_info.media_type ) ) {
-                                    return;
-                                }
-                                tweet_info_list.push( tweet_info );
-                                tweet_count ++;
-                            } );
-                        }
-                        else {
-                            console.error( '"data-min-position" not found' );
-                            self.timeline_status = 'error';
-                        }
-                    } )
-                    .error( function ( jqXHR, textStatus, errorThrown ) {
-                        console.error( html_endpoint.url, textStatus );
-                        self.timeline_status = 'error';
-                    } )
-                    .complete( function () {
-                        callback();
-                    } );
-                    
-                    api_data.q = html_data.q; // クエリは最初に設定したもので共通
-                    self.search_timeline_parameters.is_first = false;
-                    
-                    return self;
-                }
-                
-                api_data.last_note_ts = self._get_last_note_ts();
-                api_data.max_position = self.current_max_position;
-                
-                $.getJSON( api_endpoint.url, api_data )
-                .success( function ( json ) {
-                    var tweet_info_list = self.tweet_info_list,
-                        tweet_count = 0,
-                        json_inner = ( json.inner ) ? json.inner : ( ( json.items_html && json.min_position ) ? json : null );
-                        // items_html/min_position が json.inner ではなく、json 直下にある場合もある（未ログイン時など）
-                    
-                    if ( ( ! json_inner ) ||  ( ! json_inner.items_html ) || ( ! json_inner.min_position ) ) {
-                        console.error( 'items not found' );
-                        self.timeline_status = 'end';
-                        return;
-                    }
-                    
-                    $( '<div/>' ).html( json_inner.items_html ).find( '.js-stream-item' ).each( function () {
-                        var tweet_info = self._get_tweet_info( $( this ) );
-                        
-                        if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) || ( ! tweet_info.media_type ) ) {
-                            return;
-                        }
-                        tweet_info_list.push( tweet_info );
-                        tweet_count ++;
-                    } );
-                    
-                    if ( json_inner.min_position ) {
-                        if ( json_inner.min_position != self.current_max_position ) {
-                            self.current_max_position = json_inner.min_position;
-                        }
-                        else {
-                            // min_position に変化がなければ終了とみなす
-                            self.timeline_status = 'end';
-                        }
-                    }
-                    else {
-                        self.timeline_status = 'end';
-                    }
-                    /*
-                    // has_more_items が false でも、実際に検索したらまだツイートがある場合がある模様
-                    //if ( ! json_inner.has_more_items ) {
-                    //    self.timeline_status = 'end';
-                    //}
-                    */
-                } )
-                .error( function ( jqXHR, textStatus, errorThrown ) {
-                    console.error( api_endpoint.url, textStatus );
-                    self.timeline_status = 'error';
-                } )
-                .complete( function () {
-                    callback();
-                } );
-                
-                return self;
-            } // end of _get_next_search_timeline()
+            } // end of __get_tweet_info()
         
         }, // end of TemplateMediaTimeline
         
@@ -1100,7 +1159,8 @@ var download_media_timeline = ( function () {
                 $( '#' + container_id ).remove();
                 
                 self.jq_checkbox_image = jq_checkbox_image = $( '<label><input type="checkbox" name="image">' + OPTIONS.CHECKBOX_IMAGE_TEXT + '</label>' )
-                    .addClass( SCRIPT_NAME + '_checkbox_image' )
+                    .addClass( SCRIPT_NAME + '_checkbox_image' );
+                
                 jq_checkbox_image
                     .find( 'input' )
                     .prop( 'checked', support_image )
@@ -1151,6 +1211,8 @@ var download_media_timeline = ( function () {
                         event.stopPropagation();
                         event.preventDefault();
                         
+                        jq_button_start.blur();
+                        
                         if ( jq_checkbox_container.find( 'input[type=checkbox]:checked' ).length <= 0 ) {
                             alert( OPTIONS.CHECKBOX_ALERT );
                             return;
@@ -1165,20 +1227,10 @@ var download_media_timeline = ( function () {
                         event.stopPropagation();
                         event.preventDefault();
                         
+                        jq_button_stop.blur();
+                        
                         self.on_stop( event );
                     } );
-                
-                /*
-                //self.jq_button_close = jq_button_close = $( '<button />' )
-                //    .text( OPTIONS.DIALOG_BUTTON_CLOSE_TEXT )
-                //    .addClass( SCRIPT_NAME + '_button_close' )
-                //    .click( function ( event ) {
-                //        event.stopPropagation();
-                //        event.preventDefault();
-                //        
-                //        self.on_close( event );
-                //    } );
-                */
                 
                 self.jq_button_close = jq_button_close = $( '<span />' )
                     .addClass( SCRIPT_NAME + '_button_close Icon Icon--close Icon--large' )
@@ -1494,7 +1546,7 @@ var download_media_timeline = ( function () {
                         ,   '"' : '&quot;'
                         ,   '<' : '&lt;'
                         ,   '>' : '&gt;'
-                        }[ match ]
+                        }[ match ];
                     } ).replace( /(https?:\/\/[\w\/:%#$&?\(\)~.=+\-;]+)/g, '<a href="$1" target="blank" style="color: #657786;">$1</a>' ),
                     jq_paragraph;
                 
@@ -1521,7 +1573,7 @@ var download_media_timeline = ( function () {
                 
                 self.log( '--------------------------------------------------------------------------------' ); 
                 
-                return self
+                return self;
             } // end of log_hr()
         
         ,   reset_flags : function () {
@@ -1572,17 +1624,35 @@ var download_media_timeline = ( function () {
                 self.jq_until_date.text( '' );
                 self.clear_log();
                 
+                self.saved_body_overflow = $( d.body ).get( 0 ).style.overflow;
+                self.saved_body_overflow_x = $( d.body ).get( 0 ).style.overflowX;
+                self.saved_body_overflow_y = $( d.body ).get( 0 ).style.overflowY;
+                // ※ $( 'body' ).css( 'overflow' ) だと getComputedStyle() による値が取れてしまうため、element.style.* を取得したい場合には適さない
+                
                 jq_container.show();
                 
-                $( d.body ).keydown( function ( event ) {
-                    switch ( event.keyCode ) {
+                $( d.body )
+                .on( 'keydown.dialog', function ( event ) {
+                    if ( event.shiftKey || event.altKey || event.ctrlKey ) {
+                        // [Shift], [Alt], [Ctrl] と併用する場合は何もしない
+                        return;
+                    }
+                    
+                    var key_code = event.keyCode;
+                    
+                    switch ( key_code ) {
                         case 27 :
+                            self.jq_button_close.click();
+                            
                             event.stopPropagation();
                             event.preventDefault();
-                            
-                            self.jq_button_close.click();
                             break;
                     }
+                } )
+                .css( {
+                    // ダイアログを出している間は body のスクロールをさせない
+                    'overflow-x' : 'hidden',
+                    'overflow-y' : 'hidden'
                 } );
                 
                 return self;
@@ -1596,7 +1666,13 @@ var download_media_timeline = ( function () {
                     return self;
                 }
                 
-                $( d.body ).unbind( 'keydown' );
+                $( d.body )
+                .css( {
+                    'overflow' : self.saved_body_overflow,
+                    'overflow-x' : self.saved_body_overflow_x,
+                    'overflow-y' : self.saved_body_overflow_y
+                } )
+                .off( 'keydown.dialog' );
                 
                 jq_container.hide();
                 
@@ -1619,9 +1695,7 @@ var download_media_timeline = ( function () {
                     since_id = self.jq_since_id.val(),
                     until_id = self.jq_until_id.val(),
                     since_date = self.jq_since_date.text().trim(),
-                    since_date = ( since_date ) ? '(' + since_date + ')' : '(unknown)',
                     until_date = self.jq_until_date.text().trim(),
-                    until_date = ( until_date ) ? '(' + until_date + ')' : '(unknown)',
                     max_id = '',
                     min_id = '',
                     max_datetime = '',
@@ -1635,146 +1709,209 @@ var download_media_timeline = ( function () {
                     ,   video : support_video
                     },
                     MediaTimeline = self.MediaTimeline = object_extender( TemplateMediaTimeline ).init( screen_name, until_id, since_id, filter_info ),
-                    zip;
+                    zip = null,
+                    zip_request = null;
+                
+                since_date = ( since_date ) ? '(' + since_date + ')' : '(unknown)';
+                until_date = ( until_date ) ? '(' + until_date + ')' : '(unknown)';
+                
+                if ( typeof ZipRequest == 'function' ) {
+                    zip_request = new ZipRequest().open();
+                }
+                else {
+                    zip = new JSZip();
+                }
                 
                 if ( MediaTimeline.search_query ) {
                     self.log( 'Search Query :', MediaTimeline.search_query );
                 }
                 self.log( 'Tweet range :', ( ( since_id ) ? since_id : '<unspecified>' ), since_date, '-', ( ( until_id ) ? until_id : '<unspecified>' ), until_date );
                 self.log( 'Image : ' + ( support_image ? 'on' : 'off' ), ' / GIF : ' + ( support_gif ? 'on' : 'off' ), ' / Video : ' + ( support_video ? 'on' : 'off' ) );
-                self.log_hr()
-                
-                /*
-                limit_tweet_number = parseInt( self.jq_limit_tweet_number.val().trim(), 10 );
-                if ( isNaN( limit_tweet_number ) ) {
-                    limit_tweet_number = 0;
-                }
-                set_value( SCRIPT_NAME + '_limit_tweet_number', String( limit_tweet_number ) );
-                */
-                
-                if ( since_id && until_id && ( decimal_cmp( until_id, since_id ) <= 0 ) ) {
-                    self.log( '[Error]', 'Wrong range' );
-                    
-                    finish();
-                    
-                    return self;
-                }
-                
-                self.downloading = true;
-                self.stopping = false;
-                self.closing = false;
-                
-                zip = new JSZip();
+                self.log_hr();
                 
                 
-                function is_close() {
-                    if ( ! self.closing ) {
-                        return false;
+                function close_dialog() {
+                    if ( zip_request ) {
+                        zip_request.close();
+                        zip_request = null;
                     }
-                    
-                    close();
-                    
-                    //finish();
-                    
-                    return true;
-                } // end of is_close()
-                
-                
-                function is_stop() {
-                    if ( ! self.stopping ) {
-                        return false;
-                    }
-                    
-                    stop();
-                    
-                    finish();
-                    
-                    return true;
-                } // end of is_stop()
-                
-                
-                function close() {
                     zip = null;
                     MediaTimeline = null;
                     
                     self.hide_container();
-                } // end of close()
+                } // end of close_dialog()
                 
                 
-                function stop() {
+                function clean_up( callback ) {
+                    if ( zip_request ) {
+                        zip_request.close();
+                        zip_request = null;
+                    }
+                    zip = null;
+                    MediaTimeline = null;
+                    
+                    self.reset_flags();
+                    self.reset_buttons();
+                    
+                    if ( typeof callback == 'function' ) {
+                        callback();
+                    }
+                } // end of clean_up()
+                
+                
+                function request_save( callback ) {
+                    function _callback() {
+                        if ( typeof callback == 'function' ) {
+                            callback();
+                        }
+                    }  // end of _callback()
+                    
+                    if ( ( ! min_id ) || ( ! max_id ) || ( total_tweet_counter <= 0 ) || ( total_image_counter <= 0 ) ) {
+                        _callback();
+                    }
+                    
+                    var filename_head = ( self.is_search_timeline ) ? ( 'search(' + format_date( new Date(), 'YYYYMMDD_hhmmss' ) + ')' ) : screen_name,
+                        filename_prefix = [ filename_head, ( min_id + '(' + datetime_to_timestamp( min_datetime ) + ')' ), ( max_id + '(' + datetime_to_timestamp( max_datetime ) + ')' ), 'media' ].join( '-' ),
+                        log_text = self.jq_log.text(),
+                        log_filename = filename_prefix + '.log',
+                        zip_filename = filename_prefix + '.zip',
+                        zip_content_type = 'blob',
+                        url_scheme = 'blob';
+                    
+                    total_file_size += string_to_arraybuffer( log_text ).byteLength;
+                    if ( IS_FIREFOX && ( total_file_size < BASE64_BLOB_THRESHOLD ) ) {
+                        zip_content_type =  'base64';
+                        url_scheme = 'data';
+                    }
+                    log_debug( 'Total: ', total_file_size, 'byte' );
+                    
+                    if ( zip_request ) {
+                        zip_request.file( {
+                            data : log_text,
+                            filename : log_filename,
+                            zip_options : {
+                                date : adjust_date_for_zip( new Date() )
+                            }
+                        }, function ( response ) {
+                            if ( response.error ) {
+                                log_error( 'zip_request.file()', response.error );
+                            }
+                        } );
+                        
+                        zip_request.generate( url_scheme, function ( response ) {
+                            if ( ! zip_request ) {
+                                log_error( 'zip_request.generate(): zip_request was already removed'  );
+                                _callback();
+                                return;
+                            }
+                            zip_request.close();
+                            zip_request = null;
+                            
+                            if ( response.error ) {
+                                log_error( 'zip_request.generate()', response.error );
+                                _callback();
+                                return;
+                            }
+                            download_url( zip_filename, response.zip_url );
+                            _callback();
+                        } );
+                    }
+                    else if ( zip ) {
+                        zip.file( log_filename, log_text, {
+                            date : adjust_date_for_zip( new Date() )
+                        } );
+                        
+                        zip.generateAsync( { type : zip_content_type } )
+                        .then( function ( zip_content ) {
+                            // TODO: ZIP を保存しようとすると、Firefox でセキュリティ警告が出る場合がある（「このファイルを開くのは危険です」(This file is not commonly downloaded.)）
+                            // → Firefox のみ、Blob URL ではなく、Data URL(Base64) で様子見
+                            if ( zip_content_type == 'base64' ) {
+                                log_debug( 'Base64: ', zip_content.length, 'byte' );
+                                download_base64( zip_filename, zip_content );
+                            }
+                            else {
+                                download_blob( zip_filename, zip_content );
+                            }
+                            zip = null;
+                            _callback();
+                        } )
+                        .catch( function ( error ) {
+                            log_error( 'zip.generateAsync()', error );
+                            _callback();
+                        } );
+                    }
+                    else {
+                        log_error( 'zip / zip_request was already removed' );
+                        _callback();
+                    }
+                } // end of request_save()
+                
+                
+                function stop_download( callback ) {
                     self.log_hr();
                     self.log( '[Stop]', min_id, '-', max_id, ' ( Tweet:', total_tweet_counter, '/ Media:', total_image_counter, ')' );
                     
-                    save();
+                    request_save( function () {
+                        if ( min_id ) {
+                            self.jq_until_id.val( min_id ).trigger( 'change', [ true ] );
+                        }
+                        
+                        if ( typeof callback == 'function' ) {
+                            callback();
+                        }
+                    } );
                     
-                    if ( min_id ) {
-                        self.jq_until_id.val( min_id ).trigger( 'change', [ true ] );
-                    }
-                } // end of stop()
+                } // end of stop_download()
                 
                 
-                function complete() {
+                function download_completed( callback ) {
                     self.log_hr();
                     
                     var is_limited = !! ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) );
                     
                     self.log( '[Complete' + ( is_limited  ? '(limited)' : '' ) + ']', min_id, '-', max_id, ' ( Tweet:', total_tweet_counter, '/ Media:', total_image_counter, ')' );
                     
-                    save();
-                    
-                    if ( is_limited && min_id ) {
-                        self.jq_until_id.val( min_id ).trigger( 'change', [ true ] );
-                    }
-                } // end of complete()
-                
-                
-                function save() {
-                    if ( ( ! min_id ) || ( ! max_id ) || ( total_tweet_counter <= 0 ) || ( total_image_counter <= 0 ) ) {
-                        return;
-                    }
-                    
-                    var filename_head = ( self.is_search_timeline ) ? ( 'search(' + format_date( new Date(), 'YYYYMMDD_hhmmss' ) + ')' ) : screen_name,
-                        filename_prefix = [ filename_head, ( min_id + '(' + datetime_to_timestamp( min_datetime ) + ')' ), ( max_id + '(' + datetime_to_timestamp( max_datetime ) + ')' ), 'media' ].join( '-' ),
-                        log_text = self.jq_log.text(),
-                        zip_content_type = 'blob';
-                    
-                    zip.file( filename_prefix + '.log', log_text );
-                    total_file_size += string_to_arraybuffer( log_text ).byteLength;
-                    
-                    if ( IS_FIREFOX && ( total_file_size < BASE64_BLOB_THRESHOLD ) ) {
-                        zip_content_type =  'base64';
-                    }
-                    //self.log( 'Total: ', total_file_size, 'byte' );
-                    
-                    zip.generateAsync( { type : zip_content_type } ).then( function ( zip_content ) {
-                        var zip_filename = filename_prefix + '.zip';
+                    request_save( function () {
+                        if ( is_limited && min_id ) {
+                            self.jq_until_id.val( min_id ).trigger( 'change', [ true ] );
+                        }
                         
-                        // TODO: ZIP を保存しようとすると、Firefox でセキュリティ警告が出る場合がある（「このファイルを開くのは危険です」(This file is not commonly downloaded.)）
-                        // → Firefox のみ、Blob URL ではなく、Data URL(Base64) で様子見
-                        if ( zip_content_type == 'base64' ) {
-                            //self.log( 'Base64: ', zip_content.length, 'byte' );
-                            save_base64( zip_filename, zip_content );
+                        if ( typeof callback == 'function' ) {
+                            callback();
                         }
-                        else {
-                            save_blob( zip_filename, zip_content );
-                        }
-                        zip = null;
                     } );
                     
-                } // end of save()
+                } // end of download_completed()
                 
                 
-                function finish() {
-                    zip = null;
-                    MediaTimeline = null;
+                function is_close_dialog_requested() {
+                    if ( ! self.closing ) {
+                        return false;
+                    }
                     
-                    self.reset_flags();
-                    self.reset_buttons();
-                } // end of finish()
+                    clean_up( function () {
+                        close_dialog();
+                    } );
+                    
+                    return true;
+                } // end of is_close_dialog_requested()
+                
+                
+                function is_stop_download_requested() {
+                    if ( ! self.stopping ) {
+                        return false;
+                    }
+                    
+                    stop_download( function () {
+                        clean_up();
+                    } );
+                    
+                    return true;
+                } // end of is_stop_download_requested()
                 
                 
                 function check_tweet_info( result ) {
-                    if ( is_close() || is_stop() ) {
+                    if ( is_close_dialog_requested() || is_stop_download_requested() ) {
                         return;
                     }
                     
@@ -1783,8 +1920,9 @@ var download_media_timeline = ( function () {
                         ( ! result.tweet_info ) ||
                         ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) )
                     ) {
-                        complete();
-                        finish();
+                        download_completed( function () {
+                            clean_up();
+                        } );
                         return;
                     }
                     
@@ -1794,15 +1932,18 @@ var download_media_timeline = ( function () {
                     
                     self.log( ( 1 + total_tweet_counter ) + '.', current_tweet_info.datetime, current_tweet_info.tweet_url );
                     
-                    function push_image_result( image_url, arraybuffer, error_message ) {
+                    function push_image_result( image_url, image_result ) {
+                        if ( ! image_result ) {
+                            image_result = {
+                                error : '[bug] unknown error'
+                            };
+                        }
+                        
                         if ( current_image_result_map[ image_url ] ) {
                             return;
                         }
                         
-                        current_image_result_map[ image_url ] = {
-                            arraybuffer : arraybuffer
-                        ,   error_message : error_message
-                        };
+                        current_image_result_map[ image_url ] = image_result;
                         
                         current_image_download_counter ++;
                         
@@ -1813,12 +1954,12 @@ var download_media_timeline = ( function () {
                         var current_tweet_id = current_tweet_info.tweet_id,
                             report_index = 0;
                         
-                        if ( ( ! max_id ) || ( decimal_cmp( max_id, current_tweet_id ) < 0 ) ) {
+                        if ( ( ! max_id ) || ( bignum_cmp( max_id, current_tweet_id ) < 0 ) ) {
                             max_id = current_tweet_id;
                             max_datetime = current_tweet_info.datetime;
                         }
                         
-                        if ( ( ! min_id ) || ( decimal_cmp( current_tweet_id, min_id ) < 0 ) ) {
+                        if ( ( ! min_id ) || ( bignum_cmp( current_tweet_id, min_id ) < 0 ) ) {
                             min_id = current_tweet_id;
                             min_datetime = current_tweet_info.datetime;
                         }
@@ -1827,29 +1968,39 @@ var download_media_timeline = ( function () {
                         total_image_counter += current_image_download_counter;
                         
                         $.each( current_tweet_info.image_urls, function ( index, image_url ) {
+                            report_index ++;
+                            
                             var image_result = current_image_result_map[ image_url ],
                                 media_type = current_tweet_info.media_type,
                                 img_extension = ( media_type == 'image' ) ? get_img_extension( image_url ) : get_video_extension( image_url ),
                                 media_prefix = ( media_type == 'gif' ) ? 'gif' : ( ( media_type == 'image' ) ? 'img' : 'vid' );
                             
-                            if ( image_result.arraybuffer ) {
-                                report_index ++;
-                                
+                            if ( image_result.error ) {
+                                self.log( '  ' + media_prefix + report_index + ')', image_url, '=>', image_result.error );
+                                return;
+                            }
+                            
+                            self.log( '  ' + media_prefix + report_index + ')', image_url );
+                            
+                            if ( zip && image_result.arraybuffer ) {
                                 var timestamp = datetime_to_timestamp( current_tweet_info.datetime ),
                                     image_filename = [ current_tweet_info.tweet_screen_name, current_tweet_id, timestamp, media_prefix + report_index ].join( '-' ) + '.' + img_extension;
-                                
-                                self.log( '  ' + media_prefix + report_index + ')', image_url );
                                 
                                 zip.file( image_filename, image_result.arraybuffer, {
                                     date : current_tweet_info.zipdate
                                 } );
+                                
                                 total_file_size += image_result.arraybuffer.byteLength;
                                 delete image_result.arraybuffer;
                                 image_result.arraybuffer = null;
                             }
+                            else if ( zip_request && Number.isFinite( image_result.size ) ) {
+                                total_file_size += image_result.size;
+                                
+                                log_debug( image_url, '=>', image_result.size, 'byte / total: ', total_file_size , 'byte' );
+                            }
                             else {
-                                report_index ++;
-                                self.log( '  ' + media_prefix + report_index + ')', image_url, '=>', image_result.error_message );
+                                self.log( '  ' + media_prefix + report_index + ')', image_url, '=> zip / zip_request was already removed' );
                             }
                         } );
                         
@@ -1859,41 +2010,81 @@ var download_media_timeline = ( function () {
                     
                     
                     function load_image( image_url_index, first_image_url, current_image_url ) {
+                        if ( ! current_image_url ) {
+                            current_image_url = first_image_url;
+                        }
+                        
                         var extension_list = [ 'png', 'jpg', 'gif' ],
                             next_extension_map = {
                                 'png' : 'gif'
                             ,   'gif' : 'jpg'
                             ,   'jpg' : 'png'
                             },
-                            current_image_url = ( current_image_url ) ? current_image_url : first_image_url,
                             first_extension = get_img_extension( first_image_url, extension_list ),
                             current_extension = get_img_extension( current_image_url, extension_list );
                         
                         current_tweet_info.image_urls[ image_url_index ] = current_image_url;
                         
-                        fetch_url( current_image_url, {
-                            responseType : 'arraybuffer'
-                        ,   onload : function ( response ) {
-                                if ( response.status < 200 || 300 <= response.status ) {
+                        if ( zip_request ) {
+                            var media_type = current_tweet_info.media_type,
+                                media_extension = ( media_type == 'image' ) ? current_extension : get_video_extension( current_image_url ),
+                                media_prefix = ( media_type == 'gif' ) ? 'gif' : ( ( media_type == 'image' ) ? 'img' : 'vid' ),
+                                timestamp = datetime_to_timestamp( current_tweet_info.datetime ),
+                                image_filename = [ current_tweet_info.tweet_screen_name, current_tweet_info.tweet_id, timestamp, media_prefix + ( image_url_index + 1 ) ].join( '-' ) + '.' + media_extension;
+                            
+                            zip_request.file( {
+                                url : current_image_url,
+                                filename : image_filename,
+                                zip_options : {
+                                    date : current_tweet_info.zipdate
+                                }
+                            }, function ( response ) {
+                                if ( response.error ) {
                                     // 元の拡張子が png でも、png:orig が取得できない場合がある
                                     // → gif:orig なら取得できるケース有り・ステータスチェックし、エラー時にはリトライする
                                     var next_extension = next_extension_map[ current_extension ];
                                     
                                     if ( next_extension == first_extension ) {
                                         current_tweet_info.image_urls[ image_url_index ] = first_image_url;
-                                        push_image_result( first_image_url, null, response.status + ' ' + response.statusText );
+                                        push_image_result( first_image_url, response );
                                         return;
                                     }
                                     load_image( image_url_index, first_image_url, current_image_url.replace( '.' + current_extension, '.' + next_extension ) );
                                     return;
                                 }
-                                push_image_result( current_image_url, response.response );
-                            } // end of onload()
-                        ,   onerror : function ( response ) {
-                                push_image_result( current_image_url, null, response.status + ' ' + response.statusText );
-                            } // end of onerror()
-                        } );
-                        
+                                push_image_result( current_image_url, response );
+                            } );
+                        }
+                        else {
+                            fetch_url( current_image_url, {
+                                responseType : 'arraybuffer'
+                            ,   onload : function ( response ) {
+                                    if ( response.status < 200 || 300 <= response.status ) {
+                                        // 元の拡張子が png でも、png:orig が取得できない場合がある
+                                        // → gif:orig なら取得できるケース有り・ステータスチェックし、エラー時にはリトライする
+                                        var next_extension = next_extension_map[ current_extension ];
+                                        
+                                        if ( next_extension == first_extension ) {
+                                            current_tweet_info.image_urls[ image_url_index ] = first_image_url;
+                                            push_image_result( first_image_url, {
+                                                error : response.status + ' ' + response.statusText
+                                            } );
+                                            return;
+                                        }
+                                        load_image( image_url_index, first_image_url, current_image_url.replace( '.' + current_extension, '.' + next_extension ) );
+                                        return;
+                                    }
+                                    push_image_result( current_image_url, {
+                                        arraybuffer : response.response
+                                    } );
+                                } // end of onload()
+                            ,   onerror : function ( response ) {
+                                    push_image_result( current_image_url, {
+                                        error : response.status + ' ' + response.statusText
+                                    } );
+                                } // end of onerror()
+                            } );
+                        }
                     } // end of load_image()
                     
                     
@@ -1927,12 +2118,16 @@ var download_media_timeline = ( function () {
                                     load_image( index, video_url );
                                 }
                                 else {
-                                    push_image_result( video_url, null, 'not supported' );
+                                    push_image_result( video_url, {
+                                        error : 'not supported'
+                                    } );
                                 }
                             } )
                             .error( function ( jqXHR, textStatus, errorThrown ) {
-                                console.error( video_info_url, textStatus );
-                                push_image_result( video_info_url, null, textStatus );
+                                log_error( video_info_url, textStatus );
+                                push_image_result( video_info_url, {
+                                    error : textStatus
+                                } );
                             } )
                             .complete( function () {
                             } );
@@ -1958,12 +2153,16 @@ var download_media_timeline = ( function () {
                                     load_image( index, video_url );
                                 }
                                 else {
-                                    push_image_result( video_url, null, 'not supported' );
+                                    push_image_result( video_url, {
+                                        error : 'not supported'
+                                    } );
                                 }
                             } )
                             .error( function ( jqXHR, textStatus, errorThrown ) {
-                                console.error( video_info_url, textStatus );
-                                push_image_result( video_info_url, null, textStatus );
+                                log_error( video_info_url, textStatus );
+                                push_image_result( video_info_url, {
+                                    error : textStatus
+                                } );
                             } )
                             .complete( function () {
                             } );
@@ -1997,7 +2196,7 @@ var download_media_timeline = ( function () {
                                     } );
                                 }
                                 catch ( error ) {
-                                    console.error( tweet_info_url, error );
+                                    log_error( tweet_info_url, error );
                                     // TODO: 外部動画等は未サポート
                                 }
                                 
@@ -2008,18 +2207,35 @@ var download_media_timeline = ( function () {
                                     load_image( index, video_url );
                                 }
                                 else {
-                                    push_image_result( tweet_info_url, null, 'not supported' );
+                                    push_image_result( tweet_info_url, {
+                                        error : 'not supported'
+                                    } );
                                 }
                             } )
                             .error( function ( jqXHR, textStatus, errorThrown ) {
-                                console.error( tweet_info_url, textStatus );
-                                push_image_result( tweet_info_url, null, textStatus );
+                                log_error( tweet_info_url, textStatus );
+                                push_image_result( tweet_info_url, {
+                                    error : textStatus
+                                } );
                             } )
                             .complete( function () {
                             } );
                         } );
                     }
                 } // end of check_tweet_info()
+                
+                
+                if ( since_id && until_id && ( bignum_cmp( until_id, since_id ) <= 0 ) ) {
+                    self.log( '[Error]', 'Wrong range' );
+                    
+                    clean_up();
+                    
+                    return self;
+                }
+                
+                self.downloading = true;
+                self.stopping = false;
+                self.closing = false;
                 
                 MediaTimeline.fetch_tweet_info( check_tweet_info );
                 
@@ -2241,135 +2457,291 @@ function add_media_link_to_tweet( jq_tweet ) {
     if ( ( ! tweet_id ) || ( ( jq_images.length <= 0 ) && ( jq_playable_media.length <= 0 ) ) ) {
         return;
     }
+    
     jq_action_list.find( '.' + media_link_class_name ).remove();
     
-    if ( 0 < jq_images.length ) {
-        if ( ! OPTIONS.IMAGE_DOWNLOAD_LINK ) {
-            return;
-        }
-        
+    
+    var image_download_handler = ( function () {
         var clickable = true;
         
-        function onclick( event ) {
+        return function ( event ) {
             if ( ! clickable ) {
                 return;
             }
             clickable = false;
             jq_media_link.css( 'cursor', 'progress' );
             
-            var image_results = [],
-                download_counter = jq_images.length;
+            var image_info_list = [],
+                download_counter = jq_images.length,
+                screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' ),
+                timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' ),
+                date = new Date( parseInt( timestamp_ms, 10 ) ),
+                timestamp = ( timestamp_ms ) ? format_date( date, 'YYYYMMDD_hhmmss' ) : '',
+                zipdate = adjust_date_for_zip( date ),
+                media_prefix = 'img',
+                zip = null,
+                zip_request = null;
             
-            function set_result( index, arraybuffer, error_message ) {
-                image_results[ index ].arraybuffer = arraybuffer;
-                image_results[ index ].error_message = error_message;
+            
+            if ( typeof ZipRequest == 'function' ) {
+                zip_request = new ZipRequest().open();
+            }
+            else {
+                zip = new JSZip();
+            }
+            
+            
+            function clean_up() {
+                if ( zip_request ) {
+                    zip_request.close();
+                    zip_request = null;
+                }
+                zip = null;
+                
+                clickable = true;
+                jq_media_link.css( 'cursor', 'pointer' );
+            } // end of clean_up()
+            
+            
+            function download_completed() {
+                clean_up();
+            } // end of download_completed()
+            
+            
+            function download_error() {
+                clean_up();
+            } // end of download_error()
+            
+            
+            function set_result( target_image_index, image_result ) {
+                if ( ! image_result ) {
+                    image_result = {
+                        error : '[bug] unknown error'
+                    };
+                }
+                
+                image_info_list[ target_image_index ].result = image_result;
                 
                 if ( 0 < --download_counter ) {
                     return;
                 }
                 
-                var screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' ),
-                    timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' ),
-                    date = new Date( parseInt( timestamp_ms, 10 ) ),
-                    timestamp = ( timestamp_ms ) ? format_date( date, 'YYYYMMDD_hhmmss' ) : '',
-                    zipdate = adjust_date_for_zip( date ),
-                    media_prefix = 'img',
-                    report_index = 0,
-                    zip = new JSZip();
-                
-                $.each( image_results, function ( index, image_result ) {
-                    var img_extension = get_img_extension( image_result.image_url );
+                $.each( image_info_list, function ( image_index, image_info ) {
+                    var image_result = image_info.result,
+                        img_extension = get_img_extension( image_info.image_url );
                     
-                    if ( image_result.arraybuffer ) {
-                        report_index ++;
-                        
-                        var image_filename = [ screen_name, tweet_id, timestamp, media_prefix + report_index ].join( '-' ) + '.' + img_extension;
+                    if ( image_info.error ) {
+                        log_error( image_info.image_url, '=>', image_info.error );
+                        return;
+                    }
+                    
+                    if ( zip && image_result.arraybuffer ) {
+                        var image_filename = [ screen_name, tweet_id, timestamp, media_prefix + ( image_index + 1 ) ].join( '-' ) + '.' + img_extension;
                         
                         zip.file( image_filename, image_result.arraybuffer, {
                             date : zipdate
                         } );
                         
                         delete image_result.arraybuffer;
-                        image_result.arraybuffer = null;
+                    }
+                    else if ( zip_request && Number.isFinite( image_result.size ) ) {
+                        log_debug( image_info.image_url, '=>', image_result.size, 'byte' );
                     }
                     else {
-                        report_index ++;
-                        console.error( image_result.image_url, '=>', image_result.error_message );
+                        log_error( image_info.image_url, '=> [bug] unknown error' );
                     }
                 } );
                 
-                zip.generateAsync( { type : ( IS_FIREFOX ) ? 'base64' : 'blob' } ).then( function ( zip_content ) {
-                    var zip_filename = [ screen_name, tweet_id, timestamp, media_prefix ].join( '-' ) + '.zip';
-                    
-                    // TODO: ZIP を保存しようとすると、Firefox でセキュリティ警告が出る場合がある（「このファイルを開くのは危険です」(This file is not commonly downloaded.)）
-                    // → Firefox のみ、Blob URL ではなく、Data URL(Base64) で様子見
-                    if ( IS_FIREFOX ) {
-                        save_base64( zip_filename, zip_content );
-                    }
-                    else {
-                        save_blob( zip_filename, zip_content );
-                    }
-                    zip = null;
-                    
-                    clickable = true;
-                    jq_media_link.css( 'cursor', 'pointer' );
-                } );
+                var zip_content_type = 'blob',
+                    url_scheme = 'blob',
+                    zip_filename = [ screen_name, tweet_id, timestamp, media_prefix ].join( '-' ) + '.zip';
+                        
+                
+                if ( IS_FIREFOX ) {
+                    zip_content_type =  'base64';
+                    url_scheme = 'data';
+                }
+                
+                if ( zip_request ) {
+                    zip_request.generate( url_scheme, function ( response ) {
+                        if ( ! zip_request ) {
+                            log_error( 'zip_request.generate(): zip_request was already removed'  );
+                            
+                            download_error();
+                            return;
+                        }
+                        zip_request.close();
+                        zip_request = null;
+                        
+                        if ( response.error ) {
+                            log_error( 'zip_request.generate()', response.error );
+                            
+                            download_error();
+                            return;
+                        }
+                        download_url( zip_filename, response.zip_url );
+                        
+                        download_completed();
+                    } );
+                }
+                else if ( zip ) {
+                    zip.generateAsync( { type : zip_content_type } )
+                    .then( function ( zip_content ) {
+                        // TODO: ZIP を保存しようとすると、Firefox でセキュリティ警告が出る場合がある（「このファイルを開くのは危険です」(This file is not commonly downloaded.)）
+                        // → Firefox のみ、Blob URL ではなく、Data URL(Base64) で様子見
+                        if ( zip_content_type == 'base64' ) {
+                            download_base64( zip_filename, zip_content );
+                        }
+                        else {
+                            download_blob( zip_filename, zip_content );
+                        }
+                        
+                        download_completed();
+                    } )
+                    .catch( function ( error ) {
+                        log_error( 'zip.generateAsync()', error );
+                        
+                        download_error();
+                    } );
+                }
+                else {
+                    log_error( 'zip / zip_request was already removed' );
+                }
             } // end of set_result()
             
             
-            function load_image( index, first_image_url, current_image_url ) {
+            function load_image( image_index, first_image_url, current_image_url ) {
+                if ( ! current_image_url ) {
+                    current_image_url = first_image_url;
+                }
+                
                 var extension_list = [ 'png', 'jpg', 'gif' ],
                     next_extension_map = {
                         'png' : 'gif'
                     ,   'gif' : 'jpg'
                     ,   'jpg' : 'png'
                     },
-                    current_image_url = ( current_image_url ) ? current_image_url : first_image_url,
                     first_extension = get_img_extension( first_image_url, extension_list ),
-                    current_extension = get_img_extension( current_image_url, extension_list );
+                    current_extension = get_img_extension( current_image_url, extension_list ),
+                    image_filename = [ screen_name, tweet_id, timestamp, media_prefix + ( image_index + 1 ) ].join( '-' ) + '.' + current_extension;
                 
-                image_results[ index ].image_url = current_image_url;
+                image_info_list[ image_index ].image_url = current_image_url;
                 
-                fetch_url( current_image_url, {
-                    responseType : 'arraybuffer'
-                ,   onload : function ( response ) {
-                        if ( response.status < 200 || 300 <= response.status ) {
+                if ( zip_request ) {
+                    zip_request.file( {
+                        url : current_image_url,
+                        filename : image_filename,
+                        zip_options : {
+                            date : zipdate
+                        }
+                    }, function ( response ) {
+                        if ( response.error ) {
                             // 元の拡張子が png でも、png:orig が取得できない場合がある
                             // → gif:orig なら取得できるケース有り・ステータスチェックし、エラー時にはリトライする
                             var next_extension = next_extension_map[ current_extension ];
                             
                             if ( next_extension == first_extension ) {
-                                image_results[ index ].image_url = first_image_url;
-                                set_result( index, null, response.status + ' ' + response.statusText );
+                                image_info_list[ image_index ].image_url = first_image_url;
+                                set_result( image_index, response );
                                 return;
                             }
-                            load_image( index, first_image_url, current_image_url.replace( '.' + current_extension, '.' + next_extension ) );
+                            load_image( image_index, first_image_url, current_image_url.replace( '.' + current_extension, '.' + next_extension ) );
                             return;
                         }
-                        set_result( index, response.response );
-                    } // end of onload()
-                ,   onerror : function ( response ) {
-                        set_result( index, null, response.status + ' ' + response.statusText );
-                    } // end of onerror()
-                } );
+                        set_result( image_index, response );
+                    } );
+                }
+                else {
+                    fetch_url( current_image_url, {
+                        responseType : 'arraybuffer'
+                    ,   onload : function ( response ) {
+                            if ( response.status < 200 || 300 <= response.status ) {
+                                // 元の拡張子が png でも、png:orig が取得できない場合がある
+                                // → gif:orig なら取得できるケース有り・ステータスチェックし、エラー時にはリトライする
+                                var next_extension = next_extension_map[ current_extension ];
+                                
+                                if ( next_extension == first_extension ) {
+                                    image_info_list[ image_index ].image_url = first_image_url;
+                                    set_result( image_index, {
+                                        error : response.status + ' ' + response.statusText
+                                    } );
+                                    return;
+                                }
+                                load_image( image_index, first_image_url, current_image_url.replace( '.' + current_extension, '.' + next_extension ) );
+                                return;
+                            }
+                            set_result( image_index, {
+                                arraybuffer : response.response
+                            } );
+                        } // end of onload()
+                    ,   onerror : function ( response ) {
+                            set_result( image_index, {
+                                error : response.status + ' ' + response.statusText
+                            } );
+                        } // end of onerror()
+                    } );
+                }
             } // end of load_image()
             
             
-            jq_images.each( function ( index ) {
+            jq_images.each( function ( image_index ) {
                 var jq_image = $( this ),
                     image_url = get_img_url_orig( jq_image.attr( 'src' ) ),
-                    image_result = {
-                        image_url : image_url
-                    ,   arraybuffer : null
-                    ,   error_message : null
+                    image_info = {
+                        image_url : image_url,
+                        result : {}
                     };
                 
-                image_results.push( image_result );
+                image_info_list.push( image_info );
                 
-                load_image( index, image_url, image_url );
+                load_image( image_index, image_url );
             } );
-        } // end of onclick()
+        };
+    } )(); // end of image_download_handler()
+    
+    
+    function activate_video_download_link( video_url, media_prefix ) {
+        var screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' ),
+            timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' ),
+            timestamp = ( timestamp_ms ) ? format_date( new Date( parseInt( timestamp_ms, 10 ) ), 'YYYYMMDD_hhmmss' ) : '',
+            filename = [ screen_name, tweet_id, timestamp, media_prefix + '1' ].join( '-' ) + '.' + get_video_extension( video_url ),
+            clickable = true;
         
+        jq_media_link
+            .prop( 'href', video_url )
+            .click( function ( event ) {
+                event.stopPropagation();
+                event.preventDefault();
+                
+                if ( ! clickable ) {
+                    return;
+                }
+                clickable = false;
+                jq_media_link.css( 'cursor', 'progress' );
+                
+                fetch_url( video_url, {
+                    responseType : 'blob'
+                ,   onload : function ( response ) {
+                        download_blob( filename, response.response );
+                    }
+                ,   onerror : function ( response ) {
+                        log_error( video_url, 'fetch failure' );
+                    }
+                ,   oncomplete : function ( response ) {
+                        clickable = true;
+                        jq_media_link.css( 'cursor', 'pointer' );
+                    }
+                } );
+            } );
+        
+        jq_media_link_container.css( 'display', 'inline-block' );
+    } // end of activate_video_download_link()
+    
+    
+    if ( 0 < jq_images.length ) {
+        if ( ! OPTIONS.IMAGE_DOWNLOAD_LINK ) {
+            return;
+        }
         
         jq_media_link
             .text( OPTIONS.IMAGE_DOWNLOAD_LINK_TEXT )
@@ -2378,7 +2750,7 @@ function add_media_link_to_tweet( jq_tweet ) {
                 event.stopPropagation();
                 event.preventDefault();
                 
-                onclick( event );
+                image_download_handler( event );
             } );
         
         jq_media_link_container.css( 'display', 'inline-block' );
@@ -2388,43 +2760,6 @@ function add_media_link_to_tweet( jq_tweet ) {
             return;
         }
         jq_media_link.text( OPTIONS.VIDEO_DOWNLOAD_LINK_TEXT );
-        
-        function activate_video_download_link( video_url, media_prefix ) {
-            var screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' ),
-                timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' ),
-                timestamp = ( timestamp_ms ) ? format_date( new Date( parseInt( timestamp_ms, 10 ) ), 'YYYYMMDD_hhmmss' ) : '',
-                filename = [ screen_name, tweet_id, timestamp, media_prefix + '1' ].join( '-' ) + '.' + get_video_extension( video_url ),
-                clickable = true;
-            
-            jq_media_link
-                .prop( 'href', video_url )
-                .click( function ( event ) {
-                    event.stopPropagation();
-                    event.preventDefault();
-                    
-                    if ( ! clickable ) {
-                        return;
-                    }
-                    clickable = false;
-                    jq_media_link.css( 'cursor', 'progress' );
-                    
-                    fetch_url( video_url, {
-                        responseType : 'blob'
-                    ,   onload : function ( response ) {
-                            save_blob( filename, response.response );
-                        }
-                    ,   onerror : function ( response ) {
-                            console.error( video_url, 'fetch failure' );
-                        }
-                    ,   oncomplete : function ( response ) {
-                            clickable = true;
-                            jq_media_link.css( 'cursor', 'pointer' );
-                        }
-                    } );
-                } );
-            
-            jq_media_link_container.css( 'display', 'inline-block' );
-        } // end of activate_video_download_link()
         
         if ( jq_playable_media.hasClass( 'PlayableMedia--gif' ) || jq_playable_media.hasClass( 'PlayableMedia--vine' ) ) {
             var media_prefix = jq_playable_media.hasClass( 'PlayableMedia--gif' ) ? 'gif' : 'vid';
@@ -2471,7 +2806,7 @@ function add_media_link_to_tweet( jq_tweet ) {
                     jq_media_link.click();
                 } )
                 .error( function ( jqXHR, textStatus, errorThrown ) {
-                    console.error( video_info_url, textStatus );
+                    log_error( video_info_url, textStatus );
                     
                     jq_media_link_container.css( 'display', 'none' );
                 } )
@@ -2517,7 +2852,7 @@ function add_media_link_to_tweet( jq_tweet ) {
                         } );
                     }
                     catch ( error ) {
-                        console.error( tweet_info_url, error );
+                        log_error( tweet_info_url, error );
                         // TODO: 外部動画等は未サポート
                     }
                     
@@ -2530,7 +2865,7 @@ function add_media_link_to_tweet( jq_tweet ) {
                     jq_media_link.click();
                 } )
                 .error( function ( jqXHR, textStatus, errorThrown ) {
-                    console.error( tweet_info_url, textStatus );
+                    log_error( tweet_info_url, textStatus );
                 } )
                 .complete( function () {
                 } );
@@ -2707,7 +3042,7 @@ function initialize( user_options ) {
             }
         } )
         .error( function ( jqXHR, textStatus, errorThrown ) {
-            console.error( OAUTH2_TOKEN_API_URL, textStatus );
+            log_error( OAUTH2_TOKEN_API_URL, textStatus );
             // TODO: Cookies 中に auth_token が含まれていると、403 (code:99)が返ってきてしまう
             // → auth_token は Twitter ログイン中保持されるため、Cookies を送らないようにする対策が取れない場合、対応は困難
             oauth2_access_token = null;
@@ -2744,7 +3079,7 @@ function initialize( user_options ) {
             start_main();
         } )
         .error( function ( jqXHR, textStatus, errorThrown ) {
-            console.error( API_RATE_LIMIT_STATUS, textStatus );
+            log_debug( API_RATE_LIMIT_STATUS, textStatus );
             get_access_token();
         } )
         .complete( function () {

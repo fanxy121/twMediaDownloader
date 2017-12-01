@@ -1,5 +1,7 @@
 ( function ( w, d ) {
 
+'use strict';
+
 w.chrome = ( ( typeof browser != 'undefined' ) && browser.runtime ) ? browser : chrome;
 
 
@@ -166,8 +168,12 @@ $().ready( function () {
     
     function set_operation_evt() {
         var jq_operation = $( 'input[name="OPERATION"]' ),
-            operation = get_bool( localStorage[ 'OPERATION' ] ),
-            operation = ( operation === null ) ? true : operation; // デフォルトは true (動作中)
+            operation_key = 'OPERATION',
+            operation = get_bool( localStorage[ operation_key ] );
+        
+        if ( operation === null ) {
+            operation = true; // デフォルトは true (動作中)
+        }
         
         function set_operation( next_operation ) {
             var button_text = ( next_operation ) ? ( chrome.i18n.getMessage( 'STOP' ) ) : ( chrome.i18n.getMessage( 'START' ) ),
@@ -177,7 +183,7 @@ $().ready( function () {
             jq_operation.val( button_text );
             chrome.browserAction.setIcon( { path : icon_path } );
             
-            localStorage[ 'OPERATION' ] = next_operation;
+            localStorage[ operation_key ] = next_operation;
             operation = next_operation;
         }
         

@@ -21,7 +21,7 @@ Google Chrome で、
 ### Firefox Quantum (WebExtentions)版  
 Firefox Quantum で、  
 
-> [Twitter メディアダウンローダ – Firefox 向けアドオン](https://addons.mozilla.org/ja/firefox/addon/tw-media-downloader/?src=userprofile)  
+> [Twitter メディアダウンローダ – Firefox 向けアドオン](https://addons.mozilla.org/ja/firefox/addon/tw-media-downloader/)  
 
 よりアドオンを追加する。  
 
