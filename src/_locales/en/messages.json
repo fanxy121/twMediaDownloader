@@ -41,8 +41,14 @@
 ,   "VIDEO_DOWNLOAD_LINK" : {
         "message" : "Video Download Links"
     }
+,   "ENABLE_ZIPREQUEST" : {
+        "message" : "Zip in background"
+    }
 ,   "ENABLE_FILTER" : {
         "message" : "*Trial* Media filtering on search-timeline (using 'filter:~')"
+    }
+,   "IF_DOWNLOAD_FAILURE" : {
+        "message" : "If download failure occured"
     }
 ,   "FAST_LOW_ACCURACY" : {
         "message" : "Fast, but low accuracy"

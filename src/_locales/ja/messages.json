@@ -41,8 +41,14 @@
 ,   "VIDEO_DOWNLOAD_LINK" : {
         "message" : "動画ダウンロードリンク"
     }
+,   "ENABLE_ZIPREQUEST" : {
+        "message" : "バックグラウンドでのZIP化"
+    }
 ,   "ENABLE_FILTER" : {
         "message" : "[試用] 検索タイムラインでのメディアフィルタ(filter:～使用)"
+    }
+,   "IF_DOWNLOAD_FAILURE" : {
+        "message" : "ダウンロードに失敗する場合"
     }
 ,   "FAST_LOW_ACCURACY" : {
         "message" : "速い・低精度"

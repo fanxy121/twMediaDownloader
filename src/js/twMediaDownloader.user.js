@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.14
+// @version         0.1.1.15
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -82,7 +82,7 @@ var OPTIONS = {
 ,   DEFAULT_SUPPORT_GIF : true // true: アニメーションGIF（から変換された動画）をダウンロード対象にする
 ,   DEFAULT_SUPPORT_VIDEO : true // true: 動画をダウンロード対象にする（未サポート）
 
-,   ENABLE_ZIPREQUEST : false // true: ZipRequest を使用してバックグラウンドでダウンロード＆アーカイブ(拡張機能の場合)
+,   ENABLE_ZIPREQUEST : true // true: ZipRequest を使用してバックグラウンドでダウンロード＆アーカイブ(拡張機能の場合)
     // TODO: ENABLE_ZIPREQUEST : true 時、Chrome で、ダウンロードに失敗する場合がある
     // → 抜本的な対策が判明するまで、false に
 };
@@ -102,10 +102,6 @@ w[ SCRIPT_NAME + '_touched' ] = true;
 if ( /^https:\/\/twitter\.com\/i\/cards/.test( w.location.href ) ) {
     // https://twitter.com/i/cards/～ では実行しない
     return;
-}
-
-if ( ! OPTIONS.ENABLE_ZIPREQUEST ) {
-    delete w.ZipRequest;
 }
 
 if ( ( typeof jQuery != 'function' ) || ( ( typeof JSZip != 'function' ) && ( typeof ZipRequest != 'function' ) ) || ( typeof Decimal != 'function' ) ) {
@@ -1717,7 +1713,7 @@ var download_media_timeline = ( function () {
                 since_date = ( since_date ) ? '(' + since_date + ')' : '(unknown)';
                 until_date = ( until_date ) ? '(' + until_date + ')' : '(unknown)';
                 
-                if ( typeof ZipRequest == 'function' ) {
+                if ( ( OPTIONS.ENABLE_ZIPREQUEST ) && ( typeof ZipRequest == 'function' ) ) {
                     zip_request = new ZipRequest().open();
                 }
                 else {
@@ -2485,7 +2481,7 @@ function add_media_link_to_tweet( jq_tweet ) {
                 zip_request = null;
             
             
-            if ( typeof ZipRequest == 'function' ) {
+            if ( ( OPTIONS.ENABLE_ZIPREQUEST ) && ( typeof ZipRequest == 'function' ) ) {
                 zip_request = new ZipRequest().open();
             }
             else {
