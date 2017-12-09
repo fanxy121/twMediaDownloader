@@ -36,10 +36,10 @@
         "message" : "Under suspension"
     }
 ,   "IMAGE_DOWNLOAD_LINK" : {
-        "message" : "Image Download Links"
+        "message" : "Image Download Buttons"
     }
 ,   "VIDEO_DOWNLOAD_LINK" : {
-        "message" : "Video Download Links"
+        "message" : "Video Download Buttons"
     }
 ,   "ENABLE_ZIPREQUEST" : {
         "message" : "Zip in background"
@@ -55,5 +55,14 @@
     }
 ,   "SLOW_HIGH_ACCURACY" : {
         "message" : "Slow, but high accuracy"
+    }
+,   "DEFAULT_ACTION_ON_CLICK_EVENT" : {
+        "message" : "Default action on click (another action is performed on alt and click)"
+    }
+,   "DOWNLOAD_MEDIA" : {
+        "message" : "Download Media"
+    }
+,   "OPEN_MEDIA_LINK" : {
+        "message" : "Open Media Links"
     }
 }

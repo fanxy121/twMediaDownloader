@@ -80,6 +80,7 @@ var twMediaDownloader_chrome_init = ( function() {
             OPERATION : get_bool
         ,   IMAGE_DOWNLOAD_LINK : get_bool
         ,   VIDEO_DOWNLOAD_LINK : get_bool
+        ,   OPEN_MEDIA_LINK_BY_DEFAULT : get_bool
         ,   ENABLE_ZIPREQUEST : get_bool
         ,   ENABLE_FILTER : get_bool
         };

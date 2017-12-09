@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.15
+// @version         0.1.1.16
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -67,8 +67,9 @@ THE SOFTWARE.
 
 // ■ パラメータ {
 var OPTIONS = {
-    IMAGE_DOWNLOAD_LINK : true // true: 個別ツイートに画像ダウンロードリンクを追加
-,   VIDEO_DOWNLOAD_LINK : true // true: 個別ツイートに動画ダウンロードリンクを追加
+    IMAGE_DOWNLOAD_LINK : true // true: 個別ツイートに画像ダウンロードボタンを追加
+,   VIDEO_DOWNLOAD_LINK : true // true: 個別ツイートに動画ダウンロードボタンを追加
+,   OPEN_MEDIA_LINK_BY_DEFAULT : false // true: デフォルトでメディアリンクを開く（[Alt]＋Click時にダウンロード）
 ,   ENABLE_FILTER : true // true: 検索タイムライン使用時に filter: をかける
     // TODO: 検索タイムライン使用時、filter: をかけない場合にヒットする画像や動画が、filter: をかけるとヒットしないことがある
     
@@ -154,6 +155,8 @@ switch ( LANGUAGE ) {
         OPTIONS.CHECKBOX_ALERT = '最低でも一つはチェックを入れて下さい';
         OPTIONS.IMAGE_DOWNLOAD_LINK_TEXT = '画像⇩';
         OPTIONS.VIDEO_DOWNLOAD_LINK_TEXT = 'MP4⇩';
+        OPTIONS.DOWNLOAD_MEDIA_TITLE = 'ダウンロード';
+        OPTIONS.OPEN_MEDIA_LINK = 'メディアを開く';
         break;
     default:
         OPTIONS.DOWNLOAD_BUTTON_TEXT = '⇩';
@@ -171,6 +174,8 @@ switch ( LANGUAGE ) {
         OPTIONS.CHECKBOX_ALERT = 'Please select at least one checkbox !';
         OPTIONS.IMAGE_DOWNLOAD_LINK_TEXT = 'IMG⇩';
         OPTIONS.VIDEO_DOWNLOAD_LINK_TEXT = 'MP4⇩';
+        OPTIONS.DOWNLOAD_MEDIA_TITLE = 'Download';
+        OPTIONS.OPEN_MEDIA_LINK = 'Open media links';
         break;
 }
 
@@ -2430,18 +2435,23 @@ var check_timeline_headers = ( function () {
 } )(); // end of check_timeline_headers()
 
 
-function add_media_link_to_tweet( jq_tweet ) {
+function add_media_button_to_tweet( jq_tweet ) {
     var tweet_id = jq_tweet.attr( 'data-tweet-id' ),
         jq_action_list = jq_tweet.find( '.ProfileTweet-actionList, footer' ),
         jq_images = jq_tweet.find( '.AdaptiveMedia-photoContainer img' ),
         jq_playable_media = jq_tweet.find( '.PlayableMedia' ),
-        media_link_class_name = SCRIPT_NAME + '_media_link',
-        jq_media_link_container = $( '<div><a target="_blank"></a></div>' )
-            .addClass( 'ProfileTweet-action ' + media_link_class_name )
+        media_button_class_name = SCRIPT_NAME + '_media_button',
+        tooltip_title = ( OPTIONS.OPEN_MEDIA_LINK_BY_DEFAULT ) ? OPTIONS.OPEN_MEDIA_LINK : OPTIONS.DOWNLOAD_MEDIA_TITLE,
+        tooltip_alt_title = ( OPTIONS.OPEN_MEDIA_LINK_BY_DEFAULT ) ? OPTIONS.DOWNLOAD_MEDIA_TITLE : OPTIONS.OPEN_MEDIA_LINK,
+        jq_media_button_container = $( '<div><button/></div>' )
+            .addClass( 'ProfileTweet-action ' + media_button_class_name )
+            .addClass( 'js-tooltip' )
+            .attr( 'data-original-title', 'Click: ' + tooltip_title + ' / \n[Alt]+Click: ' + tooltip_alt_title )
             .css( {
                 'display' : 'none'
             } ),
-        jq_media_link = jq_media_link_container.find( 'a:first' )
+        jq_media_button = jq_media_button_container.find( 'button:first' )
+            //.addClass( 'btn' )
             .css( {
                 'font-size' : '12px'
             ,   'padding' : '2px 3px'
@@ -2456,18 +2466,47 @@ function add_media_link_to_tweet( jq_tweet ) {
         return;
     }
     
-    jq_action_list.find( '.' + media_link_class_name ).remove();
+    jq_action_list.find( '.' + media_button_class_name ).remove();
+    
+    
+    function is_open_image_mode( event ) {
+        return ( ( ( ! OPTIONS.OPEN_MEDIA_LINK_BY_DEFAULT ) && ( event.altKey ) ) || ( ( OPTIONS.OPEN_MEDIA_LINK_BY_DEFAULT ) && ( ! event.altKey ) ) );
+    } // end of is_open_image_mode()
     
     
     var image_download_handler = ( function () {
         var clickable = true;
         
+        function open_images( event ) {
+            var image_urls = [];
+            
+            jq_images.each( function ( image_index ) {
+                var jq_image = $( this ),
+                    image_url = get_img_url_orig( jq_image.attr( 'src' ) );
+                
+                image_urls.unshift( image_url );
+            } );
+            
+            image_urls.forEach( function ( image_url ) {
+                w.open( image_url );
+            } );
+        } // end of open_images()
+        
+        
         return function ( event ) {
+            event.stopPropagation();
+            event.preventDefault();
+            
+            if ( is_open_image_mode( event ) ) {
+                open_images( event );
+                return;
+            }
+            
             if ( ! clickable ) {
                 return;
             }
             clickable = false;
-            jq_media_link.css( 'cursor', 'progress' );
+            jq_media_button.css( 'cursor', 'progress' );
             
             var image_info_list = [],
                 download_counter = jq_images.length,
@@ -2497,7 +2536,7 @@ function add_media_link_to_tweet( jq_tweet ) {
                 zip = null;
                 
                 clickable = true;
-                jq_media_link.css( 'cursor', 'pointer' );
+                jq_media_button.css( 'cursor', 'pointer' );
             } // end of clean_up()
             
             
@@ -2705,17 +2744,22 @@ function add_media_link_to_tweet( jq_tweet ) {
             filename = [ screen_name, tweet_id, timestamp, media_prefix + '1' ].join( '-' ) + '.' + get_video_extension( video_url ),
             clickable = true;
         
-        jq_media_link
-            .prop( 'href', video_url )
+        jq_media_button
+            .prop( 'data-video-url', video_url )
             .click( function ( event ) {
                 event.stopPropagation();
                 event.preventDefault();
+                
+                if ( is_open_image_mode( event ) ) {
+                    w.open( video_url );
+                    return;
+                }
                 
                 if ( ! clickable ) {
                     return;
                 }
                 clickable = false;
-                jq_media_link.css( 'cursor', 'progress' );
+                jq_media_button.css( 'cursor', 'progress' );
                 
                 fetch_url( video_url, {
                     responseType : 'blob'
@@ -2727,12 +2771,12 @@ function add_media_link_to_tweet( jq_tweet ) {
                     }
                 ,   oncomplete : function ( response ) {
                         clickable = true;
-                        jq_media_link.css( 'cursor', 'pointer' );
+                        jq_media_button.css( 'cursor', 'pointer' );
                     }
                 } );
             } );
         
-        jq_media_link_container.css( 'display', 'inline-block' );
+        jq_media_button_container.css( 'display', 'inline-block' );
     } // end of activate_video_download_link()
     
     
@@ -2741,29 +2785,26 @@ function add_media_link_to_tweet( jq_tweet ) {
             return;
         }
         
-        jq_media_link
+        jq_media_button
             .text( OPTIONS.IMAGE_DOWNLOAD_LINK_TEXT )
-            .prop( 'href', jq_tweet.attr( 'data-permalink-path' ) )
+            .prop( 'data-tweet-url', jq_tweet.attr( 'data-permalink-path' ) )
             .click( function ( event ) {
-                event.stopPropagation();
-                event.preventDefault();
-                
                 image_download_handler( event );
             } );
         
-        jq_media_link_container.css( 'display', 'inline-block' );
+        jq_media_button_container.css( 'display', 'inline-block' );
     }
     else {
         if ( ( ! OPTIONS.VIDEO_DOWNLOAD_LINK ) || ( ! oauth2_access_token ) ) {
             return;
         }
-        jq_media_link.text( OPTIONS.VIDEO_DOWNLOAD_LINK_TEXT );
+        jq_media_button.text( OPTIONS.VIDEO_DOWNLOAD_LINK_TEXT );
         
         if ( jq_playable_media.hasClass( 'PlayableMedia--gif' ) || jq_playable_media.hasClass( 'PlayableMedia--vine' ) ) {
             var media_prefix = jq_playable_media.hasClass( 'PlayableMedia--gif' ) ? 'gif' : 'vid';
             
-            jq_media_link.click( function ( event ) {
-                jq_media_link.off( 'click' );
+            jq_media_button.click( function ( event ) {
+                jq_media_button.off( 'click' );
                 
                 event.stopPropagation();
                 event.preventDefault();
@@ -2774,8 +2815,12 @@ function add_media_link_to_tweet( jq_tweet ) {
                         
                         activate_video_download_link( video_url, media_prefix );
                         
-                        jq_media_link.click();
-                        
+                        if ( is_open_image_mode( event ) ) {
+                            w.open( video_url );
+                        }
+                        else {
+                            jq_media_button.click();
+                        }
                         return;
                     }
                     catch ( error ) {
@@ -2796,28 +2841,33 @@ function add_media_link_to_tweet( jq_tweet ) {
                     var video_url = json.track.playbackUrl;
                     
                     if ( ! is_video_url( video_url ) ) {
-                        jq_media_link_container.css( 'display', 'none' );
+                        jq_media_button_container.css( 'display', 'none' );
                         return;
                     }
                     activate_video_download_link( video_url, media_prefix );
                     
-                    jq_media_link.click();
+                    if ( is_open_image_mode( event ) ) {
+                        w.open( video_url );
+                    }
+                    else {
+                        jq_media_button.click();
+                    }
                 } )
                 .error( function ( jqXHR, textStatus, errorThrown ) {
                     log_error( video_info_url, textStatus );
                     
-                    jq_media_link_container.css( 'display', 'none' );
+                    jq_media_button_container.css( 'display', 'none' );
                 } )
                 .complete( function () {
                 } );
             } );
             
-            jq_media_link_container.css( 'display', 'inline-block' );
+            jq_media_button_container.css( 'display', 'inline-block' );
         }
         else if ( jq_playable_media.hasClass( 'PlayableMedia--video' ) ) {
         
-            jq_media_link.click( function ( event ) {
-                jq_media_link.off( 'click' );
+            jq_media_button.click( function ( event ) {
+                jq_media_button.off( 'click' );
                 
                 event.stopPropagation();
                 event.preventDefault();
@@ -2855,12 +2905,17 @@ function add_media_link_to_tweet( jq_tweet ) {
                     }
                     
                     if ( ! video_url ) {
-                        jq_media_link_container.css( 'display', 'none' );
+                        jq_media_button_container.css( 'display', 'none' );
                         return;
                     }
                     activate_video_download_link( video_url, 'vid' );
                     
-                    jq_media_link.click();
+                    if ( is_open_image_mode( event ) ) {
+                        w.open( video_url );
+                    }
+                    else {
+                        jq_media_button.click();
+                    }
                 } )
                 .error( function ( jqXHR, textStatus, errorThrown ) {
                     log_error( tweet_info_url, textStatus );
@@ -2869,7 +2924,7 @@ function add_media_link_to_tweet( jq_tweet ) {
                 } );
             } );
             
-            jq_media_link_container.css( 'display', 'inline-block' );
+            jq_media_button_container.css( 'display', 'inline-block' );
         }
     }
     
@@ -2877,13 +2932,13 @@ function add_media_link_to_tweet( jq_tweet ) {
     
     if ( 0 < jq_action_more.length ) {
         // 操作性のため、「その他」メニュー("float:right;"指定)よりも左側に挿入
-        jq_action_more.before( jq_media_link_container );
+        jq_action_more.before( jq_media_button_container );
     }
     else {
-        jq_action_list.append( jq_media_link_container );
+        jq_action_list.append( jq_media_button_container );
     }
     
-} // end of add_media_link_to_tweet()
+} // end of add_media_button_to_tweet()
 
 
 function check_media_tweets( node ) {
@@ -2914,7 +2969,7 @@ function check_media_tweets( node ) {
     jq_tweets.each( function () {
         var jq_tweet = $( this );
         
-        add_media_link_to_tweet( jq_tweet );
+        add_media_button_to_tweet( jq_tweet );
     } );
     
     return ( 0 < jq_tweets.length );
@@ -2926,12 +2981,12 @@ function insert_download_buttons() {
 } // end of insert_download_buttons()
 
 
-function insert_media_links() {
+function insert_media_buttons() {
     if ( ( ! OPTIONS.IMAGE_DOWNLOAD_LINK ) && ( ! OPTIONS.VIDEO_DOWNLOAD_LINK ) ) {
         return;
     }
     check_media_tweets( d.body );
-} // end of insert_media_links()
+} // end of insert_media_buttons()
 
 
 function start_mutation_observer() {
@@ -3007,7 +3062,7 @@ function initialize( user_options ) {
     
     function start_main() {
         insert_download_buttons();
-        insert_media_links();
+        insert_media_buttons();
         start_mutation_observer();
     } // end of start_main()
     
