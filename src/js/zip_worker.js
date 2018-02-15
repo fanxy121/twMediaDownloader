@@ -98,6 +98,7 @@ function zip_file( tab_id, zip_id, file_info ) {
             on_load( file_content );
         } )
         .catch( function ( error ) {
+            console.error( error );
             on_error( error.message );
         } );
     
