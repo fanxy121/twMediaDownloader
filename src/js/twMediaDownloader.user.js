@@ -2047,7 +2047,7 @@ var download_media_timeline = ( function () {
                                     // → gif:orig なら取得できるケース有り・ステータスチェックし、エラー時にはリトライする
                                     var next_extension = next_extension_map[ current_extension ];
                                     
-                                    if ( next_extension == first_extension ) {
+                                    if ( ( ! next_extension ) || ( next_extension == first_extension ) ) {
                                         current_tweet_info.image_urls[ image_url_index ] = first_image_url;
                                         push_image_result( first_image_url, response );
                                         return;
@@ -2067,7 +2067,7 @@ var download_media_timeline = ( function () {
                                         // → gif:orig なら取得できるケース有り・ステータスチェックし、エラー時にはリトライする
                                         var next_extension = next_extension_map[ current_extension ];
                                         
-                                        if ( next_extension == first_extension ) {
+                                        if ( ( ! next_extension ) || ( next_extension == first_extension ) ) {
                                             current_tweet_info.image_urls[ image_url_index ] = first_image_url;
                                             push_image_result( first_image_url, {
                                                 error : response.status + ' ' + response.statusText
@@ -2677,7 +2677,7 @@ function add_media_button_to_tweet( jq_tweet ) {
                             // → gif:orig なら取得できるケース有り・ステータスチェックし、エラー時にはリトライする
                             var next_extension = next_extension_map[ current_extension ];
                             
-                            if ( next_extension == first_extension ) {
+                            if ( ( ! next_extension ) || ( next_extension == first_extension ) ) {
                                 image_info_list[ image_index ].image_url = first_image_url;
                                 set_result( image_index, response );
                                 return;
@@ -2697,7 +2697,7 @@ function add_media_button_to_tweet( jq_tweet ) {
                                 // → gif:orig なら取得できるケース有り・ステータスチェックし、エラー時にはリトライする
                                 var next_extension = next_extension_map[ current_extension ];
                                 
-                                if ( next_extension == first_extension ) {
+                                if ( ( ! next_extension ) || ( next_extension == first_extension ) ) {
                                     image_info_list[ image_index ].image_url = first_image_url;
                                     set_result( image_index, {
                                         error : response.status + ' ' + response.statusText
