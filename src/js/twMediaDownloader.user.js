@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.16
+// @version         0.1.1.17
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -126,8 +126,13 @@ var $ = jQuery,
     } )(),
     IS_CHROME_EXTENSION = !! ( w.is_chrome_extension ),
     IS_FIREFOX = ( 0 <= w.navigator.userAgent.toLowerCase().indexOf( 'firefox' ) ),
-    BASE64_BLOB_THRESHOLD = 30000000, // Data URL(base64) → Blob URL 切替の閾値(Byte) (Firefox用)(TODO: 値は要調整)
+    //BASE64_BLOB_THRESHOLD = 30000000, // Data URL(base64) → Blob URL 切替の閾値(Byte) (Firefox用)(TODO: 値は要調整)
+    BASE64_BLOB_THRESHOLD = 0, // Data URL(base64) → Blob URL 切替の閾値(Byte) (Firefox用)(TODO: 値は要調整)
     // TODO: Firefox の場合、Blob URL だと警告が出る場合がある・その一方、Data URL 形式だと大きいサイズはダウンロード不可
+    // → Data URL 形式だとかなり重く、動作が不安定になるため、全て Blob URL に
+    //   ※警告を出さないためには、「≡」→「オプション」→「プライバシーとセキュリティ」（about:preferences#privacy）にて、
+    //     「セキュリティ」→「詐欺コンテンツと危険なソフトウェアからの防護」にある、
+    //     「☑不要な危険ソフトウェアを警告する(C)」のチェックを外す
     
     OAUTH2_TOKEN_API_URL = 'https://api.twitter.com/oauth2/token',
     ENCODED_TOKEN_CREDENTIAL = 'a3l4WDdaTHMyRDNlZnFEYnBLOE1xbnBucjpEODV0WTg5alFvV1dWSDhvTmpJZzI4UEpmSzRTMmxvdXE1TlB4dzhWenZsS0J3U1IweA==',
@@ -140,7 +145,8 @@ var $ = jQuery,
     limit_tweet_number = OPTIONS.DEFAULT_LIMIT_TWEET_NUMBER,
     support_image = false,
     support_gif = false,
-    support_video = false;
+    support_video = false,
+    include_retweets = false; // true: ユーザータイムライン上の RT のメディアも対象とする
 
 
 switch ( LANGUAGE ) {
@@ -157,6 +163,7 @@ switch ( LANGUAGE ) {
         OPTIONS.CHECKBOX_IMAGE_TEXT = '画像';
         OPTIONS.CHECKBOX_GIF_TEXT = '動画(GIF)';
         OPTIONS.CHECKBOX_VIDEO_TEXT = '動画';
+        OPTIONS.CHECKBOX_INCLUDE_RETWEETS = 'RTを含む';
         OPTIONS.CHECKBOX_ALERT = '最低でも一つはチェックを入れて下さい';
         OPTIONS.IMAGE_DOWNLOAD_LINK_TEXT = '画像⇩';
         OPTIONS.VIDEO_DOWNLOAD_LINK_TEXT = 'MP4⇩';
@@ -181,6 +188,7 @@ switch ( LANGUAGE ) {
         OPTIONS.CHECKBOX_IMAGE_TEXT = 'Images';
         OPTIONS.CHECKBOX_GIF_TEXT = 'Videos(GIF)';
         OPTIONS.CHECKBOX_VIDEO_TEXT = 'Videos';
+        OPTIONS.CHECKBOX_INCLUDE_RETWEETS = 'include RTs';
         OPTIONS.CHECKBOX_ALERT = 'Please select at least one checkbox !';
         OPTIONS.IMAGE_DOWNLOAD_LINK_TEXT = 'IMG⇩';
         OPTIONS.VIDEO_DOWNLOAD_LINK_TEXT = 'MP4⇩';
@@ -782,7 +790,7 @@ var download_media_timeline = ( function () {
                         max_position : self.until_id
                         
                     ,   api_endpoint : {
-                            url : 'https://twitter.com/i/profiles/show/' + ( ( self.screen_name ) ? self.screen_name : 'twitter' ) + '/media_timeline'
+                            url : 'https://twitter.com/i/profiles/show/' + ( ( self.screen_name ) ? self.screen_name : 'twitter' ) + ( ( filter_info.include_retweets ) ? '/timeline/with_replies' : '/media_timeline' )
                         ,   data : {
                                 include_available_features : 1
                             ,   include_entities : 1
@@ -1079,7 +1087,12 @@ var download_media_timeline = ( function () {
                         html_data.q += ' since_id:' + self.since_id;
                     }
                     
-                    html_data.q += ' exclude:retweets';
+                    if ( filter_info.include_retweets ) {
+                        html_data.q += ' include:nativeretweets';
+                    }
+                    else {
+                        html_data.q += ' exclude:retweets';
+                    }
                 }
                 
                 if ( OPTIONS.ENABLE_FILTER ) {
@@ -1318,6 +1331,7 @@ var download_media_timeline = ( function () {
                     jq_checkbox_image,
                     jq_checkbox_gif,
                     jq_checkbox_video,
+                    jq_checkbox_include_retweets,
                     jq_log;
                 
                 $( '#' + container_id ).remove();
@@ -1366,6 +1380,21 @@ var download_media_timeline = ( function () {
                         
                         support_video = jq_input.is( ':checked' );
                         set_value( SCRIPT_NAME + '_support_video', ( support_video ) ? '1' : '0' );
+                    } );
+                
+                self.jq_checkbox_include_retweets = jq_checkbox_include_retweets = $( '<label>( <input type="checkbox" name="include_retweets">' + OPTIONS.CHECKBOX_INCLUDE_RETWEETS + ' )</label>' )
+                    .addClass( SCRIPT_NAME + '_checkbox_include_retweets' );
+                jq_checkbox_include_retweets
+                    .find( 'input' )
+                    .prop( 'checked', include_retweets )
+                    .change( function ( event ) {
+                        var jq_input = $( this );
+                        
+                        event.stopPropagation();
+                        event.preventDefault();
+                        
+                        include_retweets = jq_input.is( ':checked' );
+                        set_value( SCRIPT_NAME + '_include_retweets', ( include_retweets ) ? '1' : '0' );
                     } );
                 
                 self.jq_button_start = jq_button_start = $( '<button />' )
@@ -1458,12 +1487,31 @@ var download_media_timeline = ( function () {
                     .attr( {
                     } )
                     .css( {
-                        'overflow' : 'hidden'
+                        'position' : 'relative'
+                    ,   'overflow' : 'hidden'
                     ,   'background' : 'lightblue'
                     ,   'height' : '30%'
                     } );
                 
-                jq_range_container = self.jq_range_container = $( '<div><h3><span class="range_header_text"></span></h3><table><tbody><tr><td><input type="text" name="since_id" value="" class="tweet_id" /></td><td><span class="range_text"></span></td><td><input type="text" name="until_id" class="tweet_id" /></td><td><label class="limit"></label><input type="text" name="limit" class="tweet_number" /></td></tr><tr class="date-range"><td class="date since-date"></td><td></td><td class="date until-date"></td><td></td></tr></tbody></table></div>' )
+                jq_range_container = self.jq_range_container = $( [
+                        '<div class="range_container">'
+                    ,   '  <h3><span class="range_header_text"></span></h3>'
+                    ,   '  <table><tbody>'
+                    ,   '    <tr>'
+                    ,   '      <td><input type="text" name="since_id" value="" class="tweet_id" /></td>'
+                    ,   '      <td><span class="range_text"></span></td>'
+                    ,   '      <td><input type="text" name="until_id" class="tweet_id" /></td>'
+                    ,   '      <td><label class="limit"></label><input type="text" name="limit" class="tweet_number" /></td>'
+                    ,   '    </tr>'
+                    ,   '    <tr class="date-range">'
+                    ,   '      <td class="date since-date"></td>'
+                    ,   '      <td></td>'
+                    ,   '      <td class="date until-date"></td>'
+                    ,   '      <td></td>'
+                    ,   '    </tr>'
+                    ,   '  </tbody></table>'
+                    ,   '</div>'
+                    ].join( '\n' ) )
                     .attr( {
                     } )
                     .css( {
@@ -1625,10 +1673,11 @@ var download_media_timeline = ( function () {
                     .attr( {
                     } )
                     .css( {
-                        'position' : 'relative'
-                    ,   'left' : '-50%'
-                    ,   'float' : 'left'
-                    ,   'margin' : '16px 0 0 0'
+                        'position' : 'absolute'
+                    ,   'left' : '0'
+                    ,   'bottom' : '16px'
+                    ,   'width' : '480px'
+                    ,   'text-align' : 'center'
                     } );
                 
                 self.jq_botton_container = jq_botton_container = $( '<div />' )
@@ -1636,10 +1685,9 @@ var download_media_timeline = ( function () {
                     .attr( {
                     } )
                     .css( {
-                        'position' : 'relative'
-                    ,   'left' : ( oauth2_access_token ) ? '60%' : '50%'
-                    ,   'float' : 'left'
-                    ,   'margin' : '0 0 0 0'
+                        'position' : 'absolute'
+                    ,   'right' : '8px'
+                    ,   'bottom' : '8px'
                     } );
                 
                 self.jq_status_container = jq_status_container = $( '<div />' )
@@ -1672,33 +1720,43 @@ var download_media_timeline = ( function () {
                     ,   'background' : 'snow'
                     } );
                 
-                jq_checkbox_container.append( jq_checkbox_image ).append( jq_checkbox_gif ).append( jq_checkbox_video ).find( 'label' )
+                jq_checkbox_container
+                    .append( jq_checkbox_image )
+                    .append( jq_checkbox_gif )
+                    .append( jq_checkbox_video )
+                    .append( jq_checkbox_include_retweets )
+                    .find( 'label' )
                     .css( {
                         'display' : 'inline-block'
                     ,   'width' : '100px'
                     ,   'margin-right' : '8px'
-                    ,   'vertical-align' : 'top'
+                    ,   'vertical-align' : 'middle'
+                    ,   'text-align' : 'left'
                     ,   'color' : '#14171a'
                     ,   'font-size' : '12px'
                     } );
                 jq_checkbox_container.find( 'input' )
                     .css( {
                         'margin-right' : '4px'
+                    ,   'vertical-align' : 'middle'
                     } );
                 
-                if ( oauth2_access_token ) {
-                    jq_botton_container.append( jq_checkbox_container );
-                }
-                jq_botton_container.append( jq_button_start ).append( jq_button_stop ).find( 'button' )
+                jq_botton_container
+                    .append( jq_button_start )
+                    .append( jq_button_stop )
+                    .find( 'button' )
                     .addClass( 'btn' )
                     .css( {
-                        'position' : 'relative'
-                    ,   'left' : '-50%'
-                    ,   'float' : 'left'
-                    ,   'margin' : '0 24px 0 24px'
+                        'margin' : '0 8px'
                     } );
                 
-                jq_toolbox.append( jq_range_container ).append( jq_botton_container );
+                jq_toolbox.append( jq_range_container );
+                
+                if ( oauth2_access_token ) {
+                    jq_toolbox.append( jq_checkbox_container );
+                }
+                
+                jq_toolbox.append( jq_botton_container );
                 
                 jq_status_container.append( jq_log );
                 
@@ -1724,39 +1782,55 @@ var download_media_timeline = ( function () {
                 return self;
             } // end of clear_log()
             
-        ,   log : function () {
-                var self = this,
-                    jq_log = self.jq_log,
-                    text = to_array( arguments ).join( ' ' ) + '\n',
-                    html = text.replace( /[&'`"<>]/g, function( match ) {
-                        return {
-                            '&' : '&amp;'
-                        ,   "'" : '&#x27;'
-                        ,   '`' : '&#x60;'
-                        ,   '"' : '&quot;'
-                        ,   '<' : '&lt;'
-                        ,   '>' : '&gt;'
-                        }[ match ];
-                    } ).replace( /(https?:\/\/[\w\/:%#$&?\(\)~.=+\-;]+)/g, '<a href="$1" target="blank" style="color: #657786;">$1</a>' ),
-                    jq_paragraph;
+        ,   log : ( function () {
+                var reg_char_to_escape = /[&'`"<>]/g,
+                    reg_url =  /(https?:\/\/[\w\/:%#$&?\(\)~.=+\-;]+)/g,
+                    reg_tweet_url = /\/\/twitter\.com/;
                 
-                if ( ! jq_log ) {
+                function escape_html( match ) {
+                    return {
+                        '&' : '&amp;'
+                    ,   "'" : '&#x27;'
+                    ,   '`' : '&#x60;'
+                    ,   '"' : '&quot;'
+                    ,   '<' : '&lt;'
+                    ,   '>' : '&gt;'
+                    }[ match ];
+                } // end of escape_html()
+                
+                 function get_link_html( all, url ) {
+                    var color = ( reg_tweet_url.test( url ) ) ? 'brown' : 'navy';
+                    
+                    return '<a href="' + url + '" target="blank" style="color: ' + color + '; text-shadow: none;">' + url + '</a>';
+                } // end of get_link_html()
+                    
+                return function () {
+                    var self = this,
+                        jq_log = self.jq_log,
+                        text = to_array( arguments ).join( ' ' ) + '\n',
+                        
+                        html = text.replace( reg_char_to_escape, escape_html ).replace( reg_url, get_link_html ),
+                        jq_paragraph;
+                    
+                    if ( ! jq_log ) {
+                        return self;
+                    }
+                    
+                    jq_paragraph = $( '<pre />' )
+                        .html( html )
+                        .css( {
+                            'font-size' : '12px'
+                        ,   'line-height' : '16px'
+                        ,   'overflow': 'visible'
+                        ,   'text-shadow' : '1px 1px 1px #ccc'
+                        } );
+                    
+                    jq_log.append( jq_paragraph );
+                    jq_log.scrollTop( jq_log.prop( 'scrollHeight' ) );
+                    
                     return self;
-                }
-                
-                jq_paragraph = $( '<pre />' )
-                    .html( html )
-                    .css( {
-                        'font-size' : '12px'
-                    ,   'line-height' : '16px'
-                    ,   'overflow': 'visible'
-                    } );
-                
-                jq_log.append( jq_paragraph );
-                jq_log.scrollTop( jq_log.prop( 'scrollHeight' ) );
-                
-                return self;
-            } // end of log()
+                };
+            } )() // end of log()
         
         ,   log_hr : function () {
                 var self = this;
@@ -1791,6 +1865,13 @@ var download_media_timeline = ( function () {
                 self.jq_button_stop.prop( 'disabled', true );
                 self.jq_button_close.prop( 'disabled', false );
                 self.jq_checkbox_container.find( 'input[type=checkbox]' ).prop( 'disabled', false );
+                
+                if ( self.is_for_likes_timeline || judge_search_timeline() ) {
+                    self.jq_checkbox_include_retweets.hide();
+                }
+                else {
+                    self.jq_checkbox_include_retweets.show();
+                }
                 
                 return self;
             } // end of reset_buttons()
@@ -1912,6 +1993,7 @@ var download_media_timeline = ( function () {
                         image : support_image
                     ,   gif : support_gif
                     ,   video : support_video
+                    ,   include_retweets : include_retweets
                     ,   is_for_likes_timeline : self.is_for_likes_timeline
                     },
                     MediaTimeline = self.MediaTimeline = object_extender( TemplateMediaTimeline ),
@@ -1957,17 +2039,32 @@ var download_media_timeline = ( function () {
                     self.log( 'Search Query :', MediaTimeline.search_query );
                 }
                 
+                var line_prefix = '';
+                
                 if ( ! is_search_timeline ) {
-                    self.log( '@' + screen_name );
+                    line_prefix = '[@' + screen_name + '] ';
                 }
                 
                 if ( self.is_for_likes_timeline ) {
-                    self.log( '"Likes" date-time range :', since_date, '-', until_date );
+                    self.log( line_prefix + '"Likes" date-time range :', since_date, '-', until_date );
                 }
                 else {
-                    self.log( 'Tweet range :', ( ( since_id ) ? since_id : '<unspecified>' ), since_date, '-', ( ( until_id ) ? until_id : '<unspecified>' ), until_date );
+                    self.log( line_prefix + 'Tweet range :', ( ( since_id ) ? since_id : '<unspecified>' ), since_date, '-', ( ( until_id ) ? until_id : '<unspecified>' ), until_date );
                 }
-                self.log( 'Image : ' + ( support_image ? 'on' : 'off' ), ' / GIF : ' + ( support_gif ? 'on' : 'off' ), ' / Video : ' + ( support_video ? 'on' : 'off' ) );
+                
+                var flag_strings = [
+                        'Image : ' + ( support_image ? 'on' : 'off' )
+                    ,   'GIF : ' + ( support_gif ? 'on' : 'off' )
+                    ,   'Video : ' + ( support_video ? 'on' : 'off' )
+                    ];
+                
+                if ( is_search_timeline || self.is_for_likes_timeline ) {
+                }
+                else {
+                    flag_strings.push( 'include RTs : ' + ( include_retweets ? 'on' : 'off' ) );
+                }
+                
+                self.log( flag_strings.join( '  /  ' ) );
                 self.log_hr();
                 
                 
@@ -2028,7 +2125,7 @@ var download_media_timeline = ( function () {
                                 filename_head
                             ,   ( min_id + '(' + datetime_to_timestamp( min_datetime ) + ')' )
                             ,   ( max_id + '(' + datetime_to_timestamp( max_datetime ) + ')' )
-                            ,   'media'
+                            ,   ( ( ( ! self.is_search_timeline ) && include_retweets ) ? 'include_rts-' : '' ) +  'media'
                             ].join( '-' );
                     }
                     
@@ -2206,7 +2303,15 @@ var download_media_timeline = ( function () {
                         self.log( ( 1 + total_tweet_counter ) + '.', format_date( like_id_to_date( result.media_timeline_parameters.max_position ), 'YYYY/MM/DD hh:mm:ss' ) + '(L) <-', current_tweet_info.datetime, current_tweet_info.tweet_url );
                     }
                     else {
-                        self.log( ( 1 + total_tweet_counter ) + '.', current_tweet_info.datetime, current_tweet_info.tweet_url );
+                        if ( self.is_search_timeline || ( ! include_retweets ) || ( ! current_tweet_info.retweet_id ) ) {
+                            self.log( ( 1 + total_tweet_counter ) + '.', current_tweet_info.datetime, current_tweet_info.tweet_url );
+                        }
+                        else {
+                            var rt_date = tweet_id_to_date( current_tweet_info.retweet_id ),
+                                rt_datetime = ( rt_date ) ? format_date( rt_date, 'YYYY/MM/DD hh:mm:ss' ) : current_tweet_info.retweet_id;
+                            
+                            self.log( ( 1 + total_tweet_counter ) + '.', rt_datetime + '(R) <-', current_tweet_info.datetime, current_tweet_info.tweet_url );
+                        }
                     }
                     
                     function push_image_result( image_url, image_result ) {
@@ -2229,7 +2334,7 @@ var download_media_timeline = ( function () {
                         }
                         
                         var current_tweet_id = current_tweet_info.tweet_id,
-                            current_target_id = ( self.is_for_likes_timeline ) ? current_tweet_info_fetch_result.media_timeline_parameters.max_position : current_tweet_id,
+                            current_target_id = ( self.is_for_likes_timeline ) ? current_tweet_info_fetch_result.media_timeline_parameters.max_position : ( current_tweet_info.retweet_id || current_tweet_id ),
                             report_index = 0,
                             date;
                         
@@ -2601,6 +2706,7 @@ var check_timeline_headers = ( function () {
     var button_class_name = SCRIPT_NAME + '_download_button',
         jq_button_template = $( '<a />' )
             .addClass( button_class_name )
+            .addClass( 'js-tooltip' )
             .attr( {
                 href : '#'
             ,   title : OPTIONS.DOWNLOAD_BUTTON_HELP_TEXT
@@ -2663,51 +2769,40 @@ var check_timeline_headers = ( function () {
             return;
         }
         
-        var jq_button = jq_button_template.clone( true ),
-            jq_button_container = $( '<li class="ProfileNav-item" />' ).addClass( SCRIPT_NAME + '_download_button_container' ),
+        var jq_button = jq_button_template.clone( true )
+                .text( OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG ),
+            
+            jq_likes_button = jq_button_template.clone( true )
+                .addClass( 'likes' )
+                .text( OPTIONS.LIKES_DOWNLOAD_BUTTON_TEXT_LONG )
+                .attr( 'title', OPTIONS.LIKES_DOWNLOAD_BUTTON_HELP_TEXT ),
+            
+            jq_button_container = $( '<li class="ProfileNav-item" />' )
+                .append( jq_button )
+                .append( jq_likes_button )
+                .addClass( SCRIPT_NAME + '_download_button_container' )
+                .css( {
+                    'text-align' : 'right'
+                } ),
             jq_insert_point = jq_target_container.find( '.ProfileNav-item--more' );
         
         jq_target_container.find( '.' + SCRIPT_NAME + '_download_button_container' ).remove();
         
-        jq_button
-            .text( OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG )
-            .css( {
+        jq_button_container.find( '.' + SCRIPT_NAME + '_download_button' ).css( {
                 'font-size' : '14px'
             ,   'font-weight' : 'bold'
             ,   'line-height' : '20px'
             //,   'color' : '#657786'
             ,   'display' : 'block'
-            ,   'padding' : '4px'
+            ,   'padding' : '0'
             } );
         
-        jq_button_container.append( jq_button );
         if ( 0 < jq_insert_point.length ) {
             jq_insert_point.before( jq_button_container );
         }
         else {
             jq_target_container.append( jq_button_container );
         }
-        
-        var jq_likes_button = jq_button_template.clone( true ),
-            jq_likes_button_container = $( '<li class="ProfileNav-item" />' ).addClass( SCRIPT_NAME + '_download_likes_button_container' );
-        
-        jq_target_container.find( '.' + SCRIPT_NAME + '_download_likes_button_container' ).remove();
-        
-        jq_likes_button
-            .addClass( 'likes' )
-            .text( OPTIONS.LIKES_DOWNLOAD_BUTTON_TEXT_LONG )
-            .attr( 'title', OPTIONS.LIKES_DOWNLOAD_BUTTON_HELP_TEXT )
-            .css( {
-                'font-size' : '14px'
-            ,   'font-weight' : 'bold'
-            ,   'line-height' : '20px'
-            //,   'color' : '#657786'
-            ,   'display' : 'block'
-            ,   'padding' : '16px'
-            } );
-        
-        jq_likes_button_container.append( jq_likes_button );
-        jq_button_container.after( jq_likes_button_container );
     } // end of check_profile_nav()
     
     
@@ -2757,7 +2852,8 @@ function add_media_button_to_tweet( jq_tweet ) {
         jq_media_button_container = $( '<div><button/></div>' )
             .addClass( 'ProfileTweet-action ' + media_button_class_name )
             .addClass( 'js-tooltip' )
-            .attr( 'data-original-title', 'Click: ' + tooltip_title + ' / \n[Alt]+Click: ' + tooltip_alt_title )
+            //.attr( 'data-original-title', 'Click: ' + tooltip_title + ' / \n[Alt]+Click: ' + tooltip_alt_title )
+            .attr( 'title', 'Click: ' + tooltip_title + ' / \n[Alt]+Click: ' + tooltip_alt_title )
             .css( {
                 'display' : 'none'
             } ),
@@ -3369,6 +3465,14 @@ function initialize( user_options ) {
     else {
         support_video = OPTIONS.DEFAULT_SUPPORT_VIDEO;
         set_value( SCRIPT_NAME + '_support_video', ( support_video ) ? '1' : '0' );
+    }
+    
+    if ( get_value( SCRIPT_NAME + '_include_retweets' ) !== null ) {
+        include_retweets = ( get_value( SCRIPT_NAME + '_include_retweets' ) !== '0' );
+    }
+    else {
+        include_retweets = OPTIONS.DEFAULT_SUPPORT_VIDEO;
+        set_value( SCRIPT_NAME + '_include_retweets', ( include_retweets ) ? '1' : '0' );
     }
     
     
