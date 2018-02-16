@@ -729,9 +729,14 @@ var download_media_timeline = ( function () {
         
         ,   timeline_status : null // 'media' / 'search' / 'end' / 'error' / 'stop'
         
+        ,   api_limit_retry_number : 10 // API 最大リトライ回数(要調整)
+        
         ,   init : function ( screen_name, until_id, since_id, filter_info ) {
                 var self = this,
                     is_search_timeline = self.is_search_timeline = judge_search_timeline();
+                
+                self.api_retry_remaining_number = self.api_limit_retry_number;
+                self.api_max_retry_number = 0;
                 
                 self.filter_info = filter_info;
                 self.timeline_status = ( is_search_timeline ) ? 'search' : 'media';
@@ -778,7 +783,7 @@ var download_media_timeline = ( function () {
                                 include_available_features : 1
                             ,   include_entities : 1
                             ,   reset_error_state : false
-                            ,   last_note_ts : null
+                            //,   last_note_ts : null
                             ,   max_position : null
                             ,   count : 1 // いいねタイムライン取得時は 1 件ずつにし、返された JSON の min_position（次回の max_position）より、いいね時刻情報を取得
                             }
@@ -795,7 +800,7 @@ var download_media_timeline = ( function () {
                                 include_available_features : 1
                             ,   include_entities : 1
                             ,   reset_error_state : false
-                            ,   last_note_ts : null
+                            //,   last_note_ts : null
                             ,   max_position : null
                             }
                         }
@@ -826,7 +831,7 @@ var download_media_timeline = ( function () {
                         ,   include_entities : '1'
                         ,   reset_error_state : 'false'
                         ,   q : null
-                        ,   last_note_ts : null
+                        //,   last_note_ts : null
                         ,   max_position : null
                         }
                     }
@@ -930,7 +935,7 @@ var download_media_timeline = ( function () {
                     api_endpoint = media_timeline_parameters.api_endpoint,
                     data = api_endpoint.data;
                 
-                data.last_note_ts = self.__get_last_note_ts();
+                //data.last_note_ts = self.__get_last_note_ts();
                 data.max_position = media_timeline_parameters.max_position;
                 
                 $.getJSON( api_endpoint.url, data )
@@ -977,23 +982,58 @@ var download_media_timeline = ( function () {
                         }
                     }
                     
+                    var is_delayed_callback = false;
+                    
                     if ( ( ! json_inner.has_more_items ) || ( json_inner.new_latent_count <= 0 ) ) {
-                        if ( filter_info.is_for_likes_timeline ) {
-                            self.timeline_status = 'end';
+                        if (
+                            ( filter_info.is_for_likes_timeline ) && // 『いいね』タイムラインのみの措置（TODO: 他のタイムラインでも必要か？）
+                            ( 0 < self.api_retry_remaining_number )
+                        ) {
+                            // ツイートが残っているにもかかわらず、new_latent_count : 0, has_more_items : false で返る場合有り
+                            // →リトライで取得できることがある（何回リトライしてもだめで、後ほどやり直すと大丈夫なケースもある）
+                            self.api_retry_remaining_number --;
+                            if ( self.api_max_retry_number < ( self.api_limit_retry_number - self.api_retry_remaining_number ) ) {
+                                self.api_max_retry_number = self.api_limit_retry_number - self.api_retry_remaining_number;
+                            }
+                            
+                            log_debug( 'retry request in __get_next_media_timeline(): api_retry_remaining_number=', self.api_retry_remaining_number, 'api_max_retry_number=', self.api_max_retry_number );
+                            
+                            //is_delayed_callback = true;
                         }
                         else {
-                            self.timeline_status = 'search';
+                            self.api_retry_remaining_number = self.api_limit_retry_number;
+                            
+                            if ( filter_info.is_for_likes_timeline ) {
+                                self.timeline_status = 'end';
+                            }
+                            else {
+                                self.timeline_status = 'search';
+                            }
                         }
+                    }
+                    else {
+                        self.api_retry_remaining_number = self.api_limit_retry_number;
+                    }
+                    
+                    if ( is_delayed_callback ) {
+                        // リトライをかけるのを遅らせる
+                        setTimeout( function () {
+                            callback();
+                        }, 100 );
+                    }
+                    else {
+                        callback();
                     }
                 } )
                 .error( function ( jqXHR, textStatus, errorThrown ) {
                     log_error( api_endpoint.url, textStatus );
                     self.timeline_status = 'error';
+                    callback();
                 } )
                 .complete( function () {
-                    callback();
+                    //callback();
                 } );
-            } // end of _get_next_media_timeline()
+            } // end of __get_next_media_timeline()
         
         ,   __get_next_search_timeline : function ( callback ) {
                 var self = this,
@@ -1007,7 +1047,7 @@ var download_media_timeline = ( function () {
                     return self.__get_first_search_timeline( callback );
                 }
                 
-                api_data.last_note_ts = self.__get_last_note_ts();
+                //api_data.last_note_ts = self.__get_last_note_ts();
                 api_data.max_position = search_timeline_parameters.api_max_position;
                 
                 $.getJSON( api_endpoint.url, api_data )
@@ -1024,7 +1064,6 @@ var download_media_timeline = ( function () {
                     }
                     
                     var jq_html_fragment = get_jq_html_fragment( json_inner.items_html );
-                
                     
                     jq_html_fragment.find( '.js-stream-item' ).each( function () {
                         var tweet_info = self.__get_tweet_info( $( this ) );
@@ -1036,13 +1075,25 @@ var download_media_timeline = ( function () {
                         tweet_count ++;
                     } );
                     
+                    var is_delayed_callback = false;
+                    
                     if ( json_inner.min_position ) {
                         if ( json_inner.min_position != search_timeline_parameters.api_max_position ) {
                             search_timeline_parameters.api_max_position = json_inner.min_position;
+                            self.api_retry_remaining_number = self.api_limit_retry_number;
                         }
                         else {
-                            // min_position に変化がなければ終了とみなす
-                            self.timeline_status = 'end';
+                            // min_position に変化がなければ終了とみなす → 念のため、一定回数リトライ
+                            if (  0 < self.api_retry_remaining_number ) {
+                                self.api_retry_remaining_number --;
+                                log_debug( 'retry request in ___get_next_search_timeline(): api_retry_remaining_number=', self.api_retry_remaining_number );
+                                
+                                //is_delayed_callback = true;
+                            }
+                            else {
+                                self.api_retry_remaining_number = self.api_limit_retry_number;
+                                self.timeline_status = 'end';
+                            }
                         }
                     }
                     else {
@@ -1054,13 +1105,24 @@ var download_media_timeline = ( function () {
                     //    self.timeline_status = 'end';
                     //}
                     //}
+                    
+                    if ( is_delayed_callback ) {
+                        // リトライをかけるのを遅らせる
+                        setTimeout( function () {
+                            callback();
+                        }, 100 );
+                    }
+                    else {
+                        callback();
+                    }
                 } )
                 .error( function ( jqXHR, textStatus, errorThrown ) {
                     log_error( api_endpoint.url, textStatus );
                     self.timeline_status = 'error';
+                    callback();
                 } )
                 .complete( function () {
-                    callback();
+                    //callback();
                 } );
                 
                 return self;
@@ -1185,7 +1247,7 @@ var download_media_timeline = ( function () {
         ,   __get_last_note_ts : function () {
                 var last_note_ts = null;
                 try {
-                    last_note_ts = localStorage( '__DM__:latestNotificationTimestamp' );
+                    last_note_ts = localStorage.getItem( '__DM__:latestNotificationTimestamp' );
                 }
                 catch ( error ) {
                 }
@@ -2106,6 +2168,7 @@ var download_media_timeline = ( function () {
                     
                     if ( ( ! min_id ) || ( ! max_id ) || ( total_tweet_counter <= 0 ) || ( total_image_counter <= 0 ) ) {
                         _callback();
+                        return;
                     }
                     
                     var filename_head = ( self.is_search_timeline ) ? ( 'search(' + format_date( new Date(), 'YYYYMMDD_hhmmss' ) + ')' ) : screen_name,
