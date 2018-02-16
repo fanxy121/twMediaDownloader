@@ -2,9 +2,9 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.17
+// @version         0.1.1.18
 // @include         https://twitter.com/*
-// @require         https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js
+// @require         https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/decimal.js/7.3.0/decimal.min.js
 // @grant           GM_xmlhttpRequest
@@ -18,7 +18,7 @@
 
 /*
 ■ 外部ライブラリ
-- [jQuery](https://jquery.com/)
+- [jQuery](https://jquery.com/), [jquery/jquery: jQuery JavaScript Library](https://github.com/jquery/jquery)
     The MIT License
     [License | jQuery Foundation](https://jquery.org/license/)
 
@@ -939,7 +939,7 @@ var download_media_timeline = ( function () {
                 data.max_position = media_timeline_parameters.max_position;
                 
                 $.getJSON( api_endpoint.url, data )
-                .success( function ( json ) {
+                .done( function ( json ) {
                     var tweet_info_list = self.tweet_info_list,
                         tweet_count = 0,
                         min_tweet_id = self.DEFAULT_UNTIL_ID,
@@ -1025,12 +1025,12 @@ var download_media_timeline = ( function () {
                         callback();
                     }
                 } )
-                .error( function ( jqXHR, textStatus, errorThrown ) {
+                .fail( function ( jqXHR, textStatus, errorThrown ) {
                     log_error( api_endpoint.url, textStatus );
                     self.timeline_status = 'error';
                     callback();
                 } )
-                .complete( function () {
+                .always( function () {
                     //callback();
                 } );
             } // end of __get_next_media_timeline()
@@ -1051,7 +1051,7 @@ var download_media_timeline = ( function () {
                 api_data.max_position = search_timeline_parameters.api_max_position;
                 
                 $.getJSON( api_endpoint.url, api_data )
-                .success( function ( json ) {
+                .done( function ( json ) {
                     var tweet_info_list = self.tweet_info_list,
                         tweet_count = 0,
                         json_inner = ( json.inner ) ? json.inner : ( ( json.items_html && json.min_position ) ? json : null );
@@ -1116,12 +1116,12 @@ var download_media_timeline = ( function () {
                         callback();
                     }
                 } )
-                .error( function ( jqXHR, textStatus, errorThrown ) {
+                .fail( function ( jqXHR, textStatus, errorThrown ) {
                     log_error( api_endpoint.url, textStatus );
                     self.timeline_status = 'error';
                     callback();
                 } )
-                .complete( function () {
+                .always( function () {
                     //callback();
                 } );
                 
@@ -1201,7 +1201,7 @@ var download_media_timeline = ( function () {
                 ,   data : html_data
                 ,   dataType : 'html'
                 } )
-                .success( function ( html ) {
+                .done( function ( html ) {
                     var jq_html_fragment =  get_jq_html_fragment( html ),
                         tweet_info_list = self.tweet_info_list,
                         api_max_position = self.search_timeline_parameters.api_max_position = jq_html_fragment.find( '*[data-min-position]' ).attr( 'data-min-position' );
@@ -1233,11 +1233,11 @@ var download_media_timeline = ( function () {
                         tweet_info_list.push( tweet_info );
                     } );
                 } )
-                .error( function ( jqXHR, textStatus, errorThrown ) {
+                .fail( function ( jqXHR, textStatus, errorThrown ) {
                     log_error( html_endpoint.url, textStatus );
                     self.timeline_status = 'error';
                 } )
-                .complete( function () {
+                .always( function () {
                     callback();
                 } );
                 
@@ -2567,7 +2567,7 @@ var download_media_timeline = ( function () {
                                     'Authorization' : 'Bearer ' + oauth2_access_token
                                 }
                             } )
-                            .success( function ( json ) {
+                            .done( function ( json ) {
                                 var video_url = json.track.playbackUrl;
                                 
                                 current_tweet_info.image_urls[ index ] = video_url;
@@ -2582,13 +2582,13 @@ var download_media_timeline = ( function () {
                                     } );
                                 }
                             } )
-                            .error( function ( jqXHR, textStatus, errorThrown ) {
+                            .fail( function ( jqXHR, textStatus, errorThrown ) {
                                 log_error( video_info_url, textStatus );
                                 push_image_result( video_info_url, {
                                     error : textStatus
                                 } );
                             } )
-                            .complete( function () {
+                            .always( function () {
                             } );
                         } );
                     }
@@ -2602,7 +2602,7 @@ var download_media_timeline = ( function () {
                                     'Authorization' : 'Bearer ' + oauth2_access_token
                                 }
                             } )
-                            .success( function ( json ) {
+                            .done( function ( json ) {
                                 var video_url = json.track.playbackUrl;
                                 
                                 current_tweet_info.image_urls[ index ] = video_url;
@@ -2617,13 +2617,13 @@ var download_media_timeline = ( function () {
                                     } );
                                 }
                             } )
-                            .error( function ( jqXHR, textStatus, errorThrown ) {
+                            .fail( function ( jqXHR, textStatus, errorThrown ) {
                                 log_error( video_info_url, textStatus );
                                 push_image_result( video_info_url, {
                                     error : textStatus
                                 } );
                             } )
-                            .complete( function () {
+                            .always( function () {
                             } );
                         } );
                     }
@@ -2637,7 +2637,7 @@ var download_media_timeline = ( function () {
                                     'Authorization' : 'Bearer ' + oauth2_access_token
                                 }
                             } )
-                            .success( function ( json ) {
+                            .done( function ( json ) {
                                 var video_info = null,
                                     video_url = null,
                                     variants = [],
@@ -2671,13 +2671,13 @@ var download_media_timeline = ( function () {
                                     } );
                                 }
                             } )
-                            .error( function ( jqXHR, textStatus, errorThrown ) {
+                            .fail( function ( jqXHR, textStatus, errorThrown ) {
                                 log_error( tweet_info_url, textStatus );
                                 push_image_result( tweet_info_url, {
                                     error : textStatus
                                 } );
                             } )
-                            .complete( function () {
+                            .always( function () {
                             } );
                         } );
                     }
@@ -3308,7 +3308,7 @@ function add_media_button_to_tweet( jq_tweet ) {
                         'Authorization' : 'Bearer ' + oauth2_access_token
                     }
                 } )
-                .success( function ( json ) {
+                .done( function ( json ) {
                     var video_url = json.track.playbackUrl;
                     
                     if ( ! is_video_url( video_url ) ) {
@@ -3324,12 +3324,12 @@ function add_media_button_to_tweet( jq_tweet ) {
                         jq_media_button.click();
                     }
                 } )
-                .error( function ( jqXHR, textStatus, errorThrown ) {
+                .fail( function ( jqXHR, textStatus, errorThrown ) {
                     log_error( video_info_url, textStatus );
                     
                     jq_media_button_container.css( 'display', 'none' );
                 } )
-                .complete( function () {
+                .always( function () {
                 } );
             } );
             
@@ -3353,7 +3353,7 @@ function add_media_button_to_tweet( jq_tweet ) {
                         'Authorization' : 'Bearer ' + oauth2_access_token
                     }
                 } )
-                .success( function ( json ) {
+                .done( function ( json ) {
                     var video_info = null,
                         video_url = null,
                         variants = [],
@@ -3388,10 +3388,10 @@ function add_media_button_to_tweet( jq_tweet ) {
                         jq_media_button.click();
                     }
                 } )
-                .error( function ( jqXHR, textStatus, errorThrown ) {
+                .fail( function ( jqXHR, textStatus, errorThrown ) {
                     log_error( tweet_info_url, textStatus );
                 } )
-                .complete( function () {
+                .always( function () {
                 } );
             } );
             
@@ -3567,13 +3567,13 @@ function initialize( user_options ) {
                 // → webRequest を有効にして、background.js でリクエストヘッダから Cookie を取り除くようにして対応
             }
         } )
-        .success( function ( json ) {
+        .done( function ( json ) {
             oauth2_access_token = json.access_token;
             if ( OPTIONS.CACHE_OAUTH2_ACCESS_TOKEN ) {
                 set_value( SCRIPT_NAME + '_oauth2_access_token', oauth2_access_token );
             }
         } )
-        .error( function ( jqXHR, textStatus, errorThrown ) {
+        .fail( function ( jqXHR, textStatus, errorThrown ) {
             log_error( OAUTH2_TOKEN_API_URL, textStatus );
             // TODO: Cookies 中に auth_token が含まれていると、403 (code:99)が返ってきてしまう
             // → auth_token は Twitter ログイン中保持されるため、Cookies を送らないようにする対策が取れない場合、対応は困難
@@ -3583,7 +3583,7 @@ function initialize( user_options ) {
             support_gif = false;
             support_video = false;
         } )
-        .complete( function () {
+        .always( function () {
             start_main();
         } );
     } // end of get_access_token()
@@ -3603,18 +3603,18 @@ function initialize( user_options ) {
                 'Authorization' : 'Bearer ' + oauth2_access_token
             }
         } )
-        .success( function ( json ) {
+        .done( function ( json ) {
             if ( ( ! json ) || ( ! json.rate_limit_context ) || ( ! json.resources ) || ( ! json.resources.statuses ) ) {
                 get_access_token();
                 return;
             }
             start_main();
         } )
-        .error( function ( jqXHR, textStatus, errorThrown ) {
+        .fail( function ( jqXHR, textStatus, errorThrown ) {
             log_debug( API_RATE_LIMIT_STATUS, textStatus );
             get_access_token();
         } )
-        .complete( function () {
+        .always( function () {
         } );
     }
     else {
