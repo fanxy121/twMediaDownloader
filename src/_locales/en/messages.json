@@ -42,10 +42,10 @@
         "message" : "Video Download Buttons"
     }
 ,   "ENABLE_ZIPREQUEST" : {
-        "message" : "Zip in background"
+        "message" : "Zip in background (for performance)"
     }
 ,   "ENABLE_FILTER" : {
-        "message" : "*Trial* Media filtering on search-timeline (using 'filter:~')"
+        "message" : "Media filtering on search-timeline (using 'filter:~')"
     }
 ,   "IF_DOWNLOAD_FAILURE" : {
         "message" : "If download failure occured"
@@ -64,5 +64,8 @@
     }
 ,   "OPEN_MEDIA_LINK" : {
         "message" : "Open Media Links"
+    }
+,   "DOWNLOAD_SIZE_LIMIT_MB" : {
+        "message" : "Download size limit"
     }
 }

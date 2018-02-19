@@ -4,12 +4,50 @@
 
 if ( typeof browser == 'undefined' ) { window.browser = chrome; }
 
+const   SCRIPT_NAME = 'zip_worker',
+        DEBUG = false;
+
 let ZIP_TAB_INFO_MAP = {},
     USER_AGENT = navigator.userAgent.toLowerCase(),
     IS_EDGE = ( 0 <= USER_AGENT.indexOf( 'edge' ) ),
     IS_FIREFOX = ( 0 <= USER_AGENT.indexOf( 'firefox' ) ),
     IS_CHROME = ( ( ! IS_EDGE ) && ( 0 <= USER_AGENT.indexOf( 'chrome' ) ) ),
     SENDBACK_BLOB_FOR_FIREFOX = false; // Firefox で、Blob を直接（Blob URLに変換せずに）送信
+
+
+function to_array( array_like_object ) {
+    return Array.prototype.slice.call( array_like_object );
+} // end of to_array()
+
+
+if ( typeof console.log.apply == 'undefined' ) {
+    // MS-Edge 拡張機能では console.log.apply 等が undefined
+    // → apply できるようにパッチをあてる
+    // ※参考：[javascript - console.log.apply not working in IE9 - Stack Overflow](https://stackoverflow.com/questions/5538972/console-log-apply-not-working-in-ie9)
+    
+    [ 'log', 'info', 'warn', 'error', 'assert', 'dir', 'clear', 'profile', 'profileEnd' ].forEach( function ( method ) {
+        console[ method ] = this.bind( console[ method ], console );
+    }, Function.prototype.call );
+    
+    console.log( 'note: console.log.apply is undefined => patched' );
+}
+
+
+function log_debug() {
+    if ( ! DEBUG ) {
+        return;
+    }
+    var arg_list = [ '[' + SCRIPT_NAME + ']', '(' + ( new Date().toISOString() ) + ')' ];
+    
+    console.log.apply( console, arg_list.concat( to_array( arguments ) ) );
+} // end of log_debug()
+
+
+function log_error() {
+    var arg_list = [ '[' + SCRIPT_NAME + ']', '(' + ( new Date().toISOString() ) + ')' ];
+    
+    console.error.apply( console, arg_list.concat( to_array( arguments ) ) );
+} // end of log_error()
 
 
 function zip_open( tab_id ) {
@@ -98,7 +136,7 @@ function zip_file( tab_id, zip_id, file_info ) {
             on_load( file_content );
         } )
         .catch( function ( error ) {
-            console.error( error );
+            log_error( error );
             on_error( error.message );
         } );
     
@@ -150,6 +188,8 @@ function zip_generate( tab_id, zip_id, zip_parameters ) {
             }
         } )
         .catch( error => {
+            log_error( 'Error in zip.generateAsync()', error );
+            
             reject( {
                 error : error
             } );
@@ -196,13 +236,13 @@ function zip_request_handler( message, sender, sendResponse ) {
     // |   (this will keep the message channel open to the other end until sendResponse is called). ...
     
     function on_complete( response ) {
-        //console.log( message.type, response );
+        log_debug( message.type, response );
         sendResponse( response );
     } // end of on_complete()
     
     
     function on_error( response ) {
-        console.error( message.type, response );
+        log_error( message.type, response );
         sendResponse( response );
     } // end of complete()
     

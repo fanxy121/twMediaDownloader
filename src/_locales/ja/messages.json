@@ -42,10 +42,10 @@
         "message" : "動画ダウンロードボタン"
     }
 ,   "ENABLE_ZIPREQUEST" : {
-        "message" : "バックグラウンドでのZIP化"
+        "message" : "バックグラウンドでのZIP化（パフォーマンス向上）"
     }
 ,   "ENABLE_FILTER" : {
-        "message" : "[試用] 検索タイムラインでのメディアフィルタ(filter:～使用)"
+        "message" : "検索タイムラインでのメディアフィルタ(filter:～使用)"
     }
 ,   "IF_DOWNLOAD_FAILURE" : {
         "message" : "ダウンロードに失敗する場合"
@@ -64,5 +64,8 @@
     }
 ,   "OPEN_MEDIA_LINK" : {
         "message" : "メディアのリンクを開く"
+    }
+,   "DOWNLOAD_SIZE_LIMIT_MB" : {
+        "message" : "ダウンロードサイズ制限"
     }
 }

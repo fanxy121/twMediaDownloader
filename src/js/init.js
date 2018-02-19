@@ -83,6 +83,7 @@ var twMediaDownloader_chrome_init = ( function() {
         ,   OPEN_MEDIA_LINK_BY_DEFAULT : get_bool
         ,   ENABLE_ZIPREQUEST : get_bool
         ,   ENABLE_FILTER : get_bool
+        ,   DOWNLOAD_SIZE_LIMIT_MB : get_int
         };
     
     return get_init_function( 'GET_OPTIONS', option_name_to_function_map );

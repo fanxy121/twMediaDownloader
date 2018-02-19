@@ -17,6 +17,7 @@ $().ready( function () {
         ,   { key : 'ENABLE_FILTER', val : true }
         ],
         INT_KV_LIST = [
+            { key : 'DOWNLOAD_SIZE_LIMIT_MB', val : 500, min : 10, max : 10000 }
         ],
         STR_KV_LIST = [
         ];
