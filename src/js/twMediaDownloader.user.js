@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.19
+// @version         0.1.1.20
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -2622,6 +2622,25 @@ var download_media_timeline = ( function () {
                             return;
                         }
                         
+                        if ( self.closing || self.stopping ) {
+                            return;
+                        }
+                        
+                        if ( image_result.error && ( image_result.status_code == 429 ) ) {
+                            // 429: Too Many Requests ( "Rate limit exceeded" 時)
+                            self.log_hr();
+                            self.log( 'Stop: API error detected (status 429: Too Many Request)' );
+                            
+                            self.jq_button_stop.click();
+                            
+                            if ( is_stop_download_requested() || is_close_dialog_requested() ) {
+                                return;
+                            }
+                            else {
+                                log_error( '[bug] unknown error' );
+                            }
+                        }
+                        
                         current_image_result_map[ image_url ] = image_result;
                         
                         current_image_download_counter ++;
@@ -2708,6 +2727,8 @@ var download_media_timeline = ( function () {
                                 } );
                                 
                                 total_file_size += image_result.arraybuffer.byteLength;
+                                log_debug( image_url, '=>', image_result.arraybuffer.byteLength, 'byte / total: ', total_file_size , 'byte' );
+                                
                                 delete image_result.arraybuffer;
                                 image_result.arraybuffer = null;
                             }
@@ -2720,13 +2741,21 @@ var download_media_timeline = ( function () {
                                 self.log( '  ' + media_prefix + report_index + ')', image_url, '=> zip / zip_request was already removed' );
                             }
                             
-                            if ( ( OPTIONS.DOWNLOAD_SIZE_LIMIT_MB ) && ( OPTIONS.DOWNLOAD_SIZE_LIMIT_MB * 1000000 <= total_file_size ) ) {
-                                self.jq_button_stop.click();
-                                
-                                self.log_hr();
-                                self.log( 'Stop: total file size is over limit' );
-                            }
                         } );
+                        
+                        if ( ( OPTIONS.DOWNLOAD_SIZE_LIMIT_MB ) && ( OPTIONS.DOWNLOAD_SIZE_LIMIT_MB * 1000000 <= total_file_size ) ) {
+                            self.log_hr();
+                            self.log( 'Stop: Total file size is over limit' );
+                            
+                            self.jq_button_stop.click();
+                            
+                            if ( is_stop_download_requested() || is_close_dialog_requested() ) {
+                                return;
+                            }
+                            else {
+                                log_error( '[bug] unknown error' );
+                            }
+                        }
                         
                         MediaTimeline.fetch_tweet_info( check_tweet_info );
                     
@@ -2864,7 +2893,8 @@ var download_media_timeline = ( function () {
                             .fail( function ( jqXHR, textStatus, errorThrown ) {
                                 log_error( video_info_url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
                                 push_image_result( video_info_url, {
-                                    error : 'API error: ' + jqXHR.status + ' ' + jqXHR.statusText
+                                    error : 'API error: ' + jqXHR.status + ' ' + jqXHR.statusText,
+                                    status_code : jqXHR.status
                                 } );
                             } )
                             .always( function () {
@@ -2905,7 +2935,8 @@ var download_media_timeline = ( function () {
                             .fail( function ( jqXHR, textStatus, errorThrown ) {
                                 log_error( video_info_url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
                                 push_image_result( video_info_url, {
-                                    error : 'API error: ' + jqXHR.status + ' ' + jqXHR.statusText
+                                    error : 'API error: ' + jqXHR.status + ' ' + jqXHR.statusText,
+                                    status_code : jqXHR.status
                                 } );
                             } )
                             .always( function () {
@@ -2965,7 +2996,8 @@ var download_media_timeline = ( function () {
                             .fail( function ( jqXHR, textStatus, errorThrown ) {
                                 log_error( tweet_info_url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
                                 push_image_result( tweet_info_url, {
-                                    error : 'API error: ' + jqXHR.status + ' ' + jqXHR.statusText
+                                    error : 'API error: ' + jqXHR.status + ' ' + jqXHR.statusText,
+                                    status_code : jqXHR.status
                                 } );
                             } )
                             .always( function () {
