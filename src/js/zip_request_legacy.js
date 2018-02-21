@@ -235,9 +235,10 @@ window.ZipRequestLegacy = ( function () {
                 // TODO: Edge の場合、Blob URL にすると content_scripts 側でダウンロードできない
                 zip_url = response.zip_url;
                 
-                if ( IS_FIREFOX && ( self.url_scheme == 'blob' ) ) {
+                if ( self.url_scheme == 'blob' ) {
                     // background(zip_worker.js) 側で Blob URL に変換した場合、Firefox ではダウンロードできなくなってしまう
                     // → Blob URL を Blob として取得しなおしてから、再度 Blob URL に変換すると、ダウンロードできるようになる
+                    // → Chrome も Version 66.0.3346.8 (Official Build) dev (64-bit) では同様になっていた
                     var xhr = new XMLHttpRequest();
                     
                     xhr.open( 'GET', zip_url, true );

@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.20
+// @version         0.1.1.21
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -2619,10 +2619,6 @@ var download_media_timeline = ( function () {
                         }
                         
                         if ( current_image_result_map[ image_url ] ) {
-                            return;
-                        }
-                        
-                        if ( self.closing || self.stopping ) {
                             return;
                         }
                         
