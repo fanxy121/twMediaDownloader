@@ -29,7 +29,7 @@ function on_message( message, sender, sendResponse ) {
             
             response = {};
             
-            if ( typeof name_list == 'string' ) {
+            if ( typeof names == 'string' ) {
                 names = [ names ];
             }
             
@@ -37,6 +37,10 @@ function on_message( message, sender, sendResponse ) {
                 name = String( name );
                 response[ name ] = localStorage[ ( ( namespace ) ? ( String( namespace ) + '_' ) : '' ) + name ];
             } );
+            
+            // 対象タブがシークレットモードかどうか判別
+            // ※Firefoxの場合、シークレットモードで ZipRequest ライブラリを使おうとすると、generateエラーが発生してしまう
+            response.INCOGNITO_MODE = ( sender.tab && sender.tab.incognito ) ? '1' : '0';
             
             sendResponse( response );
             

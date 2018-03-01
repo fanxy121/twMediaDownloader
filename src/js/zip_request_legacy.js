@@ -252,6 +252,7 @@ window.ZipRequestLegacy = ( function () {
                         }, self.generate_callback );
                     };
                     xhr.onerror = function () {
+                        // TODO: Firefox の場合、シークレットモードで実行すると、Blob URL から取得できずにエラーが発生
                         self.__error__( 'ZIP_GENERATE: XMLHttpRequest()', 'error: ' + xhr.status + xhr.statusText, self.generate_callback );
                     };
                     xhr.send();

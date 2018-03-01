@@ -29,7 +29,7 @@ Firefox Quantum で、
 ### ユーザースクリプト版（Greasemonkey / Tampermonkey）
 Firefox＋<s>[Greasemonkey](https://addons.mozilla.org/ja/firefox/addon/greasemonkey/)</s>[Tampermonkey](https://addons.mozilla.org/ja/firefox/addon/tampermonkey/)、Google Chrome＋[Tampermonkey](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=ja) の環境で、  
 
-> [Twitter メディアダウンローダ (twMediaDownloader.user.js)](https://furyu.atnifty.com/userjs/furyutei/twMediaDownloader.user.js)  
+> [Twitter メディアダウンローダ (twMediaDownloader.user.js)](https://furyutei.work/userjs/furyutei/twMediaDownloader.user.js)  
                                 
 をクリックし、指示に従ってインストール。  
 ※ Firefox では Quantum(57) + Greasemonkey 4 より動作しなくなった（代わりに Tampermonkey を使用すること）。  

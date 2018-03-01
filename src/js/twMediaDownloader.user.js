@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.21
+// @version         0.1.1.22
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -88,8 +88,9 @@ var OPTIONS = {
 ,   DEFAULT_DRY_RUN : false // true: 走査のみ
 
 ,   ENABLE_ZIPREQUEST : true // true: ZipRequest を使用してバックグラウンドでダウンロード＆アーカイブ(拡張機能の場合)
-    // TODO: ENABLE_ZIPREQUEST : true 時、Chrome で、ダウンロードに失敗する場合がある
-    // → 抜本的な対策が判明するまで、false に
+,   INCOGNITO_MODE : false // true: 秘匿モード（シークレットウィンドウ内で起動・拡張機能の場合のみ）
+,   // TODO: Firefox でシークレットウィンドウ内で実行する場合、ENABLE_ZIPREQUEST が true だと zip_request.generate() で失敗
+    // → 暫定的に、判別して ZipRequest を使用しないようにする
 };
 
 // }
@@ -98,12 +99,7 @@ var OPTIONS = {
 // ■ 共通変数 {
 var SCRIPT_NAME = 'twMediaDownloader',
     DEBUG = false;
-
-if ( w[ SCRIPT_NAME + '_touched' ] ) {
-    return;
-}
-w[ SCRIPT_NAME + '_touched' ] = true;
-
+    
 if ( /^https:\/\/twitter\.com\/i\/cards/.test( w.location.href ) ) {
     // https://twitter.com/i/cards/～ では実行しない
     return;
@@ -115,7 +111,25 @@ if ( ( typeof jQuery != 'function' ) || ( ( typeof JSZip != 'function' ) && ( ty
 }
 
 var $ = jQuery,
-    LANGUAGE = ( function () {
+    IS_TOUCHED = ( function () {
+        var touched_id = SCRIPT_NAME + '_touched',
+            jq_touched = $( '#' + touched_id );
+        
+        if ( 0 < jq_touched.length ) {
+            return true;
+        }
+        
+        $( '<b>' ).attr( 'id', touched_id ).css( 'display', 'none' ).appendTo( $( d.documentElement ) );
+        
+        return false;
+    } )();
+
+if ( IS_TOUCHED ) {
+    console.error( SCRIPT_NAME + ': Already loaded.' );
+    return;
+}
+
+var LANGUAGE = ( function () {
         try {
             return $( 'html' ).attr( 'lang' );
         }
@@ -773,6 +787,14 @@ var Csv = {
         return self.csv_content;
     } // end of get_csv_content()
 }; // end of Csv
+
+
+function is_ziprequest_usable() {
+    var is_usable = ( ( OPTIONS.ENABLE_ZIPREQUEST ) && ( typeof ZipRequest == 'function' ) && ( ( ! IS_FIREFOX ) || ( ! OPTIONS.INCOGNITO_MODE ) ) );
+        // TODO: Firefox はシークレットモードでは ZipRequest が使用できない（zip_request.generate()
+    
+    return is_usable;
+} // end of is_ziprequest_usable()
 
 
 var download_media_timeline = ( function () {
@@ -2256,7 +2278,7 @@ var download_media_timeline = ( function () {
                 MediaTimeline.init( screen_name, until_id, since_id, filter_info );
                 
                 
-                if ( ( OPTIONS.ENABLE_ZIPREQUEST ) && ( typeof ZipRequest == 'function' ) ) {
+                if ( is_ziprequest_usable() ) {
                     zip_request = new ZipRequest().open();
                 }
                 else {
@@ -2448,6 +2470,7 @@ var download_media_timeline = ( function () {
                             
                             if ( response.error ) {
                                 log_error( 'zip_request.generate()', response.error );
+                                alert( 'Sorry, ZIP download failed !' );
                                 _callback();
                                 return;
                             }
@@ -2480,6 +2503,8 @@ var download_media_timeline = ( function () {
                         } )
                         .catch( function ( error ) {
                             log_error( 'Error in zip.generateAsync()', error );
+                            
+                            alert( 'Sorry, ZIP download failed !' );
                             _callback();
                         } );
                     }
@@ -3318,7 +3343,7 @@ function add_media_button_to_tweet( jq_tweet ) {
                 zip_request = null;
             
             
-            if ( ( OPTIONS.ENABLE_ZIPREQUEST ) && ( typeof ZipRequest == 'function' ) ) {
+            if ( is_ziprequest_usable() ) {
                 zip_request = new ZipRequest().open();
             }
             else {
@@ -3411,6 +3436,7 @@ function add_media_button_to_tweet( jq_tweet ) {
                         if ( response.error ) {
                             log_error( 'zip_request.generate()', response.error );
                             
+                            alert( 'Sorry, ZIP download failed !' );
                             download_error();
                             return;
                         }
@@ -3434,8 +3460,9 @@ function add_media_button_to_tweet( jq_tweet ) {
                         download_completed();
                     } )
                     .catch( function ( error ) {
-                        log_error( 'zip.generateAsync()', error );
+                        log_error( 'Error in zip.generateAsync()', error );
                         
+                        alert( 'Sorry, ZIP download failed !' );
                         download_error();
                     } );
                 }
