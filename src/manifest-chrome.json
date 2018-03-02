@@ -2,7 +2,7 @@
     "manifest_version" : 2
 ,   "name" : "__MSG_ext_title__"
 ,   "short_name" : "__MSG_ext_short_name__"
-,   "version" : "0.1.1.2201"
+,   "version" : "0.1.1.2202"
 ,   "description" : "__MSG_ext_description__"
 ,   "author" : "furyu"
 ,   "default_locale" : "en"
@@ -12,7 +12,7 @@
     ,   "48" : "img/icon_48.png"
     ,   "128" : "img/icon_128.png"
     }
-,   "permissions": [ "webRequest", "webRequestBlocking", "*://*.twitter.com/*", "*://pbs.twimg.com/*", "*://video.twimg.com/*", "*://*.cdn.vine.co/*" ]
+,   "permissions": [ "storage", "webRequest", "webRequestBlocking", "*://*.twitter.com/*", "*://pbs.twimg.com/*", "*://video.twimg.com/*", "*://*.cdn.vine.co/*" ]
 ,   "content_scripts" : [
         {
             "matches" : [ "*://twitter.com/*" ]

@@ -16,6 +16,21 @@ function log_debug() {
 } // end of log_debug()
 
 
+function get_values( name_list ) {
+    
+    return new Promise( function ( resolve, reject ) {
+        if ( typeof name_list == 'string' ) {
+            name_list = [ name_list ];
+        }
+        
+        chrome.storage.local.get( name_list, function ( items ) {
+            resolve( items );
+        } );
+    } );
+    
+} // end of get_values()
+
+
 function on_message( message, sender, sendResponse ) {
     log_debug( '*** on_message():', message, sender );
     
@@ -33,18 +48,20 @@ function on_message( message, sender, sendResponse ) {
                 names = [ names ];
             }
             
-            Array.apply( null, names ).forEach( function( name ) {
-                name = String( name );
-                response[ name ] = localStorage[ ( ( namespace ) ? ( String( namespace ) + '_' ) : '' ) + name ];
-            } );
+            get_values( names.map( function ( name ) {
+                return ( ( namespace ) ? ( String( namespace ) + '_' ) : '' ) + name;
+            }  ) )
+                .then( options => {
+                    // 対象タブがシークレットモードかどうか判別
+                    // ※Firefoxの場合、シークレットモードで ZipRequest ライブラリを使おうとすると、generateエラーが発生してしまう
+                    options.INCOGNITO_MODE = ( sender.tab && sender.tab.incognito ) ? '1' : '0';
+                    
+                    response = options;
+                    
+                    sendResponse( response );
+                } );
             
-            // 対象タブがシークレットモードかどうか判別
-            // ※Firefoxの場合、シークレットモードで ZipRequest ライブラリを使おうとすると、generateエラーが発生してしまう
-            response.INCOGNITO_MODE = ( sender.tab && sender.tab.incognito ) ? '1' : '0';
-            
-            sendResponse( response );
-            
-            return;
+            return true;
         
         default:
             var flag_async = zip_request_handler( message, sender, sendResponse );

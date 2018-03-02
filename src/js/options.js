@@ -8,7 +8,7 @@ w.chrome = ( ( typeof browser != 'undefined' ) && browser.runtime ) ? browser : 
 var IS_EDGE = ( 0 <= w.navigator.userAgent.toLowerCase().indexOf( 'edge' ) );
 
 
-$().ready( function () {
+$( async function () {
     var RADIO_KV_LIST = [
             { key : 'IMAGE_DOWNLOAD_LINK', val : true }
         ,   { key : 'VIDEO_DOWNLOAD_LINK', val : true }
@@ -16,11 +16,31 @@ $().ready( function () {
         ,   { key : 'ENABLE_ZIPREQUEST', val : true }
         ,   { key : 'ENABLE_FILTER', val : true }
         ],
+        
         INT_KV_LIST = [
             { key : 'DOWNLOAD_SIZE_LIMIT_MB', val : 500, min : 10, max : 10000 }
         ],
+        
         STR_KV_LIST = [
-        ];
+        ],
+        
+        OPTION_KEY_LIST = ( function () {
+                var option_keys = [];
+                
+                RADIO_KV_LIST.forEach( function( radio_kv ) {
+                    option_keys.push( radio_kv.key );
+                } );
+                
+                INT_KV_LIST.forEach( function( int_kv ) {
+                    option_keys.push( int_kv.key );
+                } );
+                
+                STR_KV_LIST.forEach( function( str_kv ) {
+                    option_keys.push( str_kv.key );
+                } );
+                
+                return option_keys;
+            } )();
     
     STR_KV_LIST.forEach( function( str_kv ) {
         str_kv.val = chrome.i18n.getMessage( str_kv.key );
@@ -50,6 +70,41 @@ $().ready( function () {
     } );
     
     
+    function get_value( key ) {
+        
+        return new Promise( function ( resolve, reject ) {
+            chrome.storage.local.get( key, function ( items ) {
+                resolve( items[ key ] );
+            } );
+        } );
+        
+    } // end of get_value()
+    
+    
+    function set_value( key, value ) {
+        
+        return new Promise( function ( resolve, reject ) {
+            chrome.storage.local.set( {
+                [ key ] : value
+            }, function () {
+                resolve();
+            } );
+        } );
+        
+    } // end of get_value()
+    
+    
+    function remove_values( key_list ) {
+        
+        return new Promise( function ( resolve, reject ) {
+            chrome.storage.local.remove( key_list, function () {
+                resolve();
+            } );
+        } );
+        
+    } // end of remove_values()
+    
+    
     function get_bool( value ) {
         if ( value === undefined ) {
             return null;
@@ -64,7 +119,7 @@ $().ready( function () {
     }  // end of get_bool()
     
     
-    function set_radio_evt( kv ) {
+    async function set_radio_evt( kv ) {
         function check_svalue( kv, svalue ) {
             var bool_value = get_bool( svalue );
             
@@ -75,7 +130,7 @@ $().ready( function () {
         }
         
         var key = kv.key,
-            svalue = check_svalue( kv, localStorage[ key ] ),
+            svalue = check_svalue( kv, await get_value( key ) ),
             jq_target = $( '#' + key ),
             jq_inputs = jq_target.find( 'input:radio' );
         
@@ -93,16 +148,15 @@ $().ready( function () {
             }
             // ※ .attr() で変更した場合、ラジオボタンが書き換わらない場合がある(手動変更後に[デフォルトに戻す]を行った場合等)ので、.prop() を使用すること。
             //   参考：[jQueryでチェックボックスの全チェック／外しをしようとしてハマッたこと、attr()とprop()の違いは罠レベル | Ultraひみちゅぶろぐ](http://ultrah.zura.org/?p=4450)
-        } ).change( function () {
+        } ).change( async function () {
             var jq_input = $( this );
             
-            localStorage[ key ] = check_svalue( kv, jq_input.val() );
-            
+            await set_value( key, check_svalue( kv, jq_input.val() ) );
         } );
     } // end of set_radio_evt()
     
     
-    function set_int_evt( kv ) {
+    async function set_int_evt( kv ) {
         function check_svalue( kv, svalue ) {
             if ( isNaN( svalue ) ) {
                 svalue = kv.val;
@@ -118,7 +172,7 @@ $().ready( function () {
         }
         
         var key = kv.key,
-            svalue = check_svalue( kv, localStorage[ key ] ),
+            svalue = check_svalue( kv, await get_value( key ) ),
             jq_target = $( '#' + key ),
             jq_input = jq_target.find( 'input:text:first' ),
             jq_current = jq_target.find( 'span.current:first' );
@@ -126,17 +180,18 @@ $().ready( function () {
         jq_current.text( svalue );
         jq_input.val( svalue );
         
-        jq_target.find( 'input:button' ).unbind( 'click' ).click( function () {
+        jq_target.find( 'input:button' ).unbind( 'click' ).click( async function () {
             var svalue = check_svalue( kv, jq_input.val() );
             
-            localStorage[ key ] = svalue;
+            await set_value( key, svalue );
+            
             jq_current.text( svalue );
             jq_input.val( svalue );
         } );
     } // end of set_int_evt()
     
     
-    function set_str_evt( kv ) {
+    async function set_str_evt( kv ) {
         function check_svalue( kv, svalue ) {
             if ( ! svalue ) {
                 svalue = kv.val;
@@ -151,7 +206,7 @@ $().ready( function () {
         }
         
         var key = kv.key,
-            svalue = check_svalue( kv, localStorage[ key ] ),
+            svalue = check_svalue( kv, await get_value( key ) ),
             jq_target = $( '#' + key ),
             jq_input = jq_target.find( 'input:text:first' ),
             jq_current = jq_target.find( 'span.current:first' );
@@ -159,26 +214,27 @@ $().ready( function () {
         jq_current.text( svalue );
         jq_input.val( svalue );
         
-        jq_target.find( 'input:button' ).unbind( 'click' ).click( function () {
+        jq_target.find( 'input:button' ).unbind( 'click' ).click( async function () {
             var svalue = check_svalue( kv, jq_input.val() );
             
-            localStorage[ key ] = svalue;
+            await set_value( key, svalue );
+            
             jq_current.text( svalue );
             jq_input.val( svalue );
         } );
     } // end of set_str_evt()
     
     
-    function set_operation_evt() {
+    async function set_operation_evt() {
         var jq_operation = $( 'input[name="OPERATION"]' ),
             operation_key = 'OPERATION',
-            operation = get_bool( localStorage[ operation_key ] );
+            operation = get_bool( await get_value( operation_key ) );
         
         if ( operation === null ) {
             operation = true; // デフォルトは true (動作中)
         }
         
-        function set_operation( next_operation ) {
+        async function set_operation( next_operation ) {
             var button_text = ( next_operation ) ? ( chrome.i18n.getMessage( 'STOP' ) ) : ( chrome.i18n.getMessage( 'START' ) ),
                 path_to_img = ( IS_EDGE ) ? 'img' : '../img',
                 icon_path = ( next_operation ) ? ( path_to_img + '/icon_16.png' ) : ( path_to_img + '/icon_16-gray.png' );
@@ -186,42 +242,42 @@ $().ready( function () {
             jq_operation.val( button_text );
             chrome.browserAction.setIcon( { path : icon_path } );
             
-            localStorage[ operation_key ] = next_operation;
+            await set_value( operation_key, next_operation );
             operation = next_operation;
         }
         
-        jq_operation.unbind( 'click' ).click( function( event ) {
-            set_operation( ! operation );
+        jq_operation.unbind( 'click' ).click( async function( event ) {
+            await set_operation( ! operation );
         } );
         
-        set_operation( operation );
+        await set_operation( operation );
     } // end of set_operation_evt()
     
     
-    function set_all_evt() {
-        RADIO_KV_LIST.forEach( function( radio_kv ) {
-            set_radio_evt( radio_kv );
+    async function set_all_evt() {
+        RADIO_KV_LIST.forEach( async function( radio_kv ) {
+            await set_radio_evt( radio_kv );
         } );
         
-        INT_KV_LIST.forEach( function( int_kv ) {
-            set_int_evt( int_kv );
+        INT_KV_LIST.forEach( async function( int_kv ) {
+            await set_int_evt( int_kv );
         } );
         
-        STR_KV_LIST.forEach( function( str_kv ) {
-            set_str_evt( str_kv );
+        STR_KV_LIST.forEach( async function( str_kv ) {
+            await set_str_evt( str_kv );
         } );
         
-        set_operation_evt();
+        await set_operation_evt();
         
     }   //  end of set_all_evt()
     
     
-    set_all_evt();
+    await set_all_evt();
     
     
-    $( 'input[name="DEFAULT"]' ).click( function () {
-        localStorage.clear();
-        set_all_evt();
+    $( 'input[name="DEFAULT"]' ).click( async function () {
+        await remove_values( OPTION_KEY_LIST );
+        await set_all_evt();
         //location.reload();
     } );
 
