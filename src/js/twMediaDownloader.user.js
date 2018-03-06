@@ -2,7 +2,7 @@
 // @name            twMediaDownloader
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
-// @version         0.1.1.22
+// @version         0.1.1.23
 // @include         https://twitter.com/*
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
@@ -1340,7 +1340,10 @@ var download_media_timeline = ( function () {
                     date,
                     timestamp_ms,
                     image_urls = [],
-                    jq_tweet = jq_tweet_container.find( '.js-stream-tweet' );
+                    jq_tweet = jq_tweet_container.find( '.js-stream-tweet' ),
+                    reply_number = 0,
+                    retweet_number = 0,
+                    like_number = 0;
                 
                 if ( jq_tweet.length <= 0 ) {
                     return null;
@@ -1367,6 +1370,26 @@ var download_media_timeline = ( function () {
                     tweet_info.datetime = ( timestamp_ms ) ? format_date( date, 'YYYY/MM/DD hh:mm:ss' ) : '';
                     tweet_info.zipdate = adjust_date_for_zip( date );
                     tweet_info.tweet_text = jq_tweet.find( '.js-tweet-text, .tweet-text' ).text();
+                    
+                    try {
+                        reply_number = parseInt( jq_tweet.find( '.ProfileTweet-action--reply:first .ProfileTweet-actionCount[data-tweet-stat-count]' ).attr( 'data-tweet-stat-count' ).replace( /[^\d\-.]/g, '' ), 10 );
+                    }
+                    catch ( err ) {
+                    }
+                    try {
+                        retweet_number = parseInt( jq_tweet.find( '.ProfileTweet-action--retweet:first .ProfileTweet-actionCount[data-tweet-stat-count]' ).attr( 'data-tweet-stat-count' ).replace( /[^\d\-.]/g, '' ), 10 );
+                    }
+                    catch ( err ) {
+                    }
+                    try {
+                        like_number = parseInt( jq_tweet.find( '.ProfileTweet-action--favorite:first .ProfileTweet-actionCount[data-tweet-stat-count]' ).attr( 'data-tweet-stat-count' ).replace( /[^\d\-.]/g, '' ), 10 );
+                    }
+                    catch ( err ) {
+                    }
+                    
+                    tweet_info.reply_number = ( isNaN( reply_number ) ) ? 0 : reply_number;
+                    tweet_info.retweet_number = ( isNaN( retweet_number ) ) ? 0 : retweet_number;
+                    tweet_info.like_number = ( isNaN( like_number ) ) ? 0 : like_number;
                 }
                 catch ( error ) {
                     // '.js-stream-item' のうち、Tweet でないため、screen_name 等が取得できないものもある（「タグ付けされたユーザー」等）
@@ -2202,8 +2225,8 @@ var download_media_timeline = ( function () {
                     column_map = {};
                 }
                 
-                var column_item_list = [ 'tweet_date', 'action_date', 'profile_name', 'screen_name', 'tweet_url', 'media_type', 'media_url', 'media_filename', 'remarks', 'tweet_content', 'reserve01', 'reserve02', 'reserve03' ].map( function ( column_name ) {
-                        return ( column_map[ column_name ] ) ? column_map[ column_name ] : '';
+                var column_item_list = [ 'tweet_date', 'action_date', 'profile_name', 'screen_name', 'tweet_url', 'media_type', 'media_url', 'media_filename', 'remarks', 'tweet_content', 'reply_number', 'retweet_number', 'like_number' ].map( function ( column_name ) {
+                        return ( column_map[ column_name ] || ( typeof column_map[ column_name ] == 'number' ) ) ? column_map[ column_name ] : '';
                     } );
                 
                 self.csv.push_row( column_item_list );
@@ -2349,7 +2372,10 @@ var download_media_timeline = ( function () {
                     media_url : 'Media URL',
                     media_filename : 'Saved filename',
                     remarks : 'Remarks',
-                    tweet_content : 'Tweet content'
+                    tweet_content : 'Tweet content',
+                    reply_number : 'Replies',
+                    retweet_number : 'Retweets',
+                    like_number : 'Likes'
                 } );
                 
                 self.log_hr();
@@ -2728,7 +2754,10 @@ var download_media_timeline = ( function () {
                                 media_type : ( media_type == 'gif' ) ? 'GIF' : ( ( media_type == 'image' ) ? 'Image' : 'Video' ),
                                 media_filename : ( ( ! image_filename ) || image_result.error || is_api_url ) ? '-' : image_filename,
                                 remarks : ( image_result.error ) ? image_result.error : '',
-                                tweet_content : current_tweet_info.tweet_text
+                                tweet_content : current_tweet_info.tweet_text,
+                                reply_number : ( current_tweet_info.reply_number ) ? current_tweet_info.reply_number : '',
+                                retweet_number : ( current_tweet_info.retweet_number ) ? current_tweet_info.retweet_number : '',
+                                like_number : ( current_tweet_info.like_number ) ? current_tweet_info.like_number : ''
                             } );
                             
                             if ( image_result.error ) {
