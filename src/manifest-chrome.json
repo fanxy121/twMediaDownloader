@@ -2,7 +2,7 @@
     "manifest_version" : 2
 ,   "name" : "__MSG_ext_title__"
 ,   "short_name" : "__MSG_ext_short_name__"
-,   "version" : "0.1.1.2301"
+,   "version" : "0.1.1.2401"
 ,   "description" : "__MSG_ext_description__"
 ,   "author" : "furyu"
 ,   "default_locale" : "en"
@@ -15,8 +15,14 @@
 ,   "permissions": [ "storage", "webRequest", "webRequestBlocking", "*://*.twitter.com/*", "*://pbs.twimg.com/*", "*://video.twimg.com/*", "*://*.cdn.vine.co/*" ]
 ,   "content_scripts" : [
         {
+            "matches" : [ "*://twitter.com/*", "*://api.twitter.com/*", "*://*.furyutei.work/oauth/*" ]
+        ,   "js" : [ "js/jquery.min.js", "js/twitter-oauth/sha1.js", "js/twitter-oauth/oAuth.js", "js/twitter-oauth/twitter-api.js" ]
+        ,   "run_at" : "document_start"
+        ,   "all_frames" : false
+        }
+    ,   {
             "matches" : [ "*://twitter.com/*" ]
-        ,   "js" : [ "js/jquery.min.js", "js/decimal.min.js", "js/zip_request_legacy.js", "js/jszip.min.js", "js/init.js" ]
+        ,   "js" : ["js/decimal.min.js", "js/jszip.min.js", "js/zip_request_legacy.js", "js/init.js" ]
         ,   "run_at" : "document_start"
         ,   "all_frames" : true
         }

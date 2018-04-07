@@ -75,6 +75,38 @@ function get_init_function( message_type, option_name_to_function_map, namespace
 } // end of get_init_function()
 
 
+function async_set_values( name_value_map ) {
+    
+    return new Promise( function ( resolve, reject ) {
+        chrome.storage.local.set( name_value_map, function () {
+            resolve( name_value_map );
+        } );
+    } );
+    
+} // end of async_set_values()
+
+
+function async_get_values( name_list ) {
+    
+    return new Promise( function ( resolve, reject ) {
+        if ( typeof name_list == 'string' ) {
+            name_list = [ name_list ];
+        }
+        
+        chrome.storage.local.get( name_list, function ( name_value_map ) {
+            name_list.forEach( function ( name ) {
+                if ( name_value_map[ name ] === undefined ) {
+                    name_value_map[ name ] = null;
+                }
+            } );
+            
+            resolve( name_value_map );
+        } );
+    } );
+    
+} // end of async_get_values()
+
+
 var twMediaDownloader_chrome_init = ( function() {
     var option_name_to_function_map = {
             OPERATION : get_bool
@@ -92,6 +124,8 @@ var twMediaDownloader_chrome_init = ( function() {
 
 w.is_chrome_extension = true;
 w.twMediaDownloader_chrome_init = twMediaDownloader_chrome_init;
+w.async_get_values = async_get_values;
+w.async_set_values = async_set_values;
 
 } )( window, document );
 

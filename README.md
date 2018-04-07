@@ -56,9 +56,24 @@ ZIP 化が完了するか、もしくは[停止]を押すと、対象となる�
 
 ■ 外部ライブラリなど
 ---
-- [jQuery](https://jquery.com/)  
+- [jQuery](https://jquery.com/), [jquery/jquery: jQuery JavaScript Library](https://github.com/jquery/jquery)  
+    The MIT License  
+    [License | jQuery Foundation](https://jquery.org/license/)  
+
 - [JSZip](https://stuk.github.io/jszip/)  
-- [decimal.js](https://github.com/MikeMcl/decimal.js)
+    Copyright (c) 2009-2014 Stuart Knightley, David Duponchel, Franz Buchinger, António Afonso  
+    The MIT License  
+    [jszip/LICENSE.markdown](https://github.com/Stuk/jszip/blob/master/LICENSE.markdown)  
+
+- [MikeMcl/decimal.js: An arbitrary-precision Decimal type for JavaScript](https://github.com/MikeMcl/decimal.js)  
+    Copyright (c) 2016, 2017 Michael Mclaughlin  
+    The MIT Licence  
+    [decimal.js/LICENCE.md](https://github.com/MikeMcl/decimal.js/blob/master/LICENCE.md)  
+
+- [lambtron/chrome-extension-twitter-oauth-example: Chrome Extension Twitter Oauth Example](https://github.com/lambtron/chrome-extension-twitter-oauth-example)  
+    Copyright (c) 2017 Andy Jiang  
+    The MIT Licence  
+    [chrome-extension-twitter-oauth-example/LICENSE](https://github.com/lambtron/chrome-extension-twitter-oauth-example/blob/master/LICENSE)  
 
 
 ■ 関連記事
