@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.1.24
+// @version         0.1.1.25
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -17,9 +17,9 @@
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/decimal.js/7.3.0/decimal.min.js
-// @require         https://nazo.furyutei.work/oauth/twitter-oauth/sha1.js
-// @require         https://nazo.furyutei.work/oauth/twitter-oauth/oAuth.js
-// @require         https://nazo.furyutei.work/oauth/twitter-oauth/twitter-api.js
+// @require         https://furyutei.work/userjs/furyutei/sha1.js
+// @require         https://furyutei.work/userjs/furyutei/oAuth.js
+// @require         https://furyutei.work/userjs/furyutei/twitter-api.js
 // ==/UserScript==
 
 /*
@@ -115,9 +115,19 @@ var OPTIONS = {
 
 // ■ 共通変数 {
 var SCRIPT_NAME = 'twMediaDownloader',
+    IS_CHROME_EXTENSION = !! ( w.is_chrome_extension ),
+    OAUTH_CALLBACK_URL = 'https://nazo.furyutei.work/oauth/',
     DEBUG = false;
 
 if ( ! /^https:\/\/twitter\.com/.test( w.location.href ) ) {
+    if ( ( ! IS_CHROME_EXTENSION ) && ( typeof Twitter != 'undefined' ) ) {
+        // Twitter OAuth 認証用ポップアップとして起動した場合は、Twitter.initialize() により tokens 取得用処理を実施（内部でTwitter.initializePopupWindow()を呼び出し）
+        // ※ユーザースクリプトでの処理（拡張機能の場合、session.jsにて実施）
+        Twitter.initialize( {
+            callback_url : OAUTH_CALLBACK_URL,
+            popup_window_name : SCRIPT_NAME + '-OAuthAuthorization'
+        } );
+    }
     return;
 }
 
@@ -164,7 +174,6 @@ var LANGUAGE = ( function () {
             }
         }
     } )(),
-    IS_CHROME_EXTENSION = !! ( w.is_chrome_extension ),
     IS_FIREFOX = ( 0 <= w.navigator.userAgent.toLowerCase().indexOf( 'firefox' ) ),
     //BASE64_BLOB_THRESHOLD = 30000000, // Data URL(base64) → Blob URL 切替の閾値(Byte) (Firefox用)(TODO: 値は要調整)
     BASE64_BLOB_THRESHOLD = 0, // Data URL(base64) → Blob URL 切替の閾値(Byte) (Firefox用)(TODO: 値は要調整)
@@ -176,7 +185,6 @@ var LANGUAGE = ( function () {
     
     OAUTH_CONSUMER_KEY = 'kyxX7ZLs2D3efqDbpK8Mqnpnr',
     OAUTH_CONSUMER_SECRET = 'D85tY89jQoWWVH8oNjIg28PJfK4S2louq5NPxw8VzvlKBwSR0x',
-    OAUTH_CALLBACK_URL = 'https://nazo.furyutei.work/oauth/',
     
     OAUTH2_TOKEN_API_URL = 'https://api.twitter.com/oauth2/token',
     ENCODED_TOKEN_CREDENTIAL = 'a3l4WDdaTHMyRDNlZnFEYnBLOE1xbnBucjpEODV0WTg5alFvV1dWSDhvTmpJZzI4UEpmSzRTMmxvdXE1TlB4dzhWenZsS0J3U1IweA==',
@@ -943,8 +951,8 @@ function initialize_twitter_api() {
             consumer_key : OAUTH_CONSUMER_KEY,
             consumer_secret : OAUTH_CONSUMER_SECRET,
             callback_url : OAUTH_CALLBACK_URL,
+            popup_window_name : SCRIPT_NAME + '-OAuthAuthorization',
             use_cache : true,
-            //auto_reauth : false
             auto_reauth : true
         } )
         .authenticate()
@@ -973,12 +981,12 @@ function initialize_twitter_api() {
         .fail( function( error ){
             log_error( 'Twitter.authenticate() failure', error );
             
-            //if ( ( ! /refused/i.test( error ) ) && confirm( 'Authorization failed. Retry ?' ) ) {
-            //    initialize_twitter_api().then( function () {
-            //        finish();
-            //    } );
-            //    return;
-            //}
+            if ( ( ! /refused/i.test( error ) ) && confirm( 'Authorization failed. Retry ?' ) ) {
+                initialize_twitter_api().then( function () {
+                    finish();
+                } );
+                return;
+            }
             
             update_oauth2_access_token( function ( access_token ) {
                 finish();
