@@ -46,4 +46,10 @@
     ,   "default_title" : "__MSG_ext_title__"
     ,   "default_popup" : "html/options.html"
     }
+,   "applications": {
+        "gecko": {
+            "id": "{8b344d1d-265c-4d48-8418-0b522359bad2}",
+            "strict_min_version": "57.0a1"
+        }
+    }
 }
