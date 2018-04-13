@@ -75,6 +75,15 @@ ZIP 化が完了するか、もしくは[停止]を押すと、対象となる�
     The MIT Licence  
     [chrome-extension-twitter-oauth-example/LICENSE](https://github.com/lambtron/chrome-extension-twitter-oauth-example/blob/master/LICENSE)  
 
+- [sha1.js](http://pajhome.org.uk/crypt/md5/sha1.html)  
+    Copyright Paul Johnston 2000 - 2009
+    The BSD License
+
+- [oauth.js](http://code.google.com/p/oauth/source/browse/code/javascript/oauth.js)(^1)  
+    Copyright 2008 Netflix, Inc.
+    [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)  
+    (^1) archived: [oauth.js](https://web.archive.org/web/20130921042751/http://code.google.com/p/oauth/source/browse/code/javascript/oauth.js)  
+
 
 ■ 関連記事
 ---

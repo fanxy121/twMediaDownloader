@@ -1,16 +1,6 @@
 /*
 twitter-api.js
---------------
-
-This script is based on  
-> [chrome-extension-twitter-oauth-example/twitter.js](https://github.com/lambtron/chrome-extension-twitter-oauth-example/blob/master/js/lib/twitter.js)  
-and  
-> [oauth-js/oauth.js](https://github.com/oauth-io/oauth-js/blob/master/dist/oauth.js) 
-is also referenced.  
-*/
-
-
-/*
+==============
 The MIT License (MIT)
 
 Copyright (c) 2018 furyu <furyutei@gmail.com>
@@ -32,8 +22,103 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-*/
 
+
+Required
+--------
+- [jQuery (>=1.5)](https://github.com/jquery/jquery)  
+    [License | jQuery Foundation](https://jquery.org/license/)  
+    The MIT License  
+
+- [sha1.js](http://pajhome.org.uk/crypt/md5/sha1.html)  
+    Copyright Paul Johnston 2000 - 2009
+    The BSD License
+
+- [oauth.js](http://code.google.com/p/oauth/source/browse/code/javascript/oauth.js)(^1)  
+    Copyright 2008 Netflix, Inc.
+    [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)  
+    (^1) archived: [oauth.js](https://web.archive.org/web/20130921042751/http://code.google.com/p/oauth/source/browse/code/javascript/oauth.js)  
+
+
+Usage
+-----
+### In the web page using Twitter API
+
+#### 1. Initialization
+##### Case A) When used within User Script or Browser Extension
+```JavaScript
+Twitter
+.initialize( {
+    // Use parameters described on your [Twitter Application Management](https://apps.twitter.com/).
+    consumer_key : 'Your "Consumer Key"',
+    consumer_secret : 'Your "Consumer Secret"',
+    callback_url : 'Your "Callback URL"',
+} );
+```
+
+##### Case B) When used with the script tag of the web page
+```JavaScript
+Twitter
+.initialize( {
+    // Use parameters described on your [Twitter Application Management](https://apps.twitter.com/).
+    consumer_key : 'Your "Consumer Key"',
+    consumer_secret : 'Your "Consumer Secret"',
+    callback_url : 'Your "Callback URL"',
+    
+    // Since you cannot inject scripts on pages such as [authorization page](https://api.twitter.com/oauth/*) and [login verification page](https://twitter.com/account/login_verification), 
+    // disable healthcheck.
+    popup_healthcheck_interval : 0,
+} );
+```
+
+
+#### 2. Authorization
+```JavaScript
+Twitter
+.authenticate()
+.done( function ( api ) {
+    // do some stuff with api
+    // Example)
+    //  api( 'account/verify_credentials', 'GET' )
+    //  .done( function( result ) {
+    //       console.log( result );
+    //  } );
+} )
+.fail( function( error ){
+    // do some stuff with error string
+    // Example)
+    //  if ( /refused/i.test( error ) ) {
+    //      console.log( 'Authorization refused by user' )
+    //  }
+    //  else {
+    //      console.error( error );
+    //  }
+});
+```
+
+### In the popup window ([authorization page](https://api.twitter.com/oauth/*), [login verification page](https://twitter.com/account/login_verification) and your callback page)
+
+```JavaScript
+Twitter.initialize();
+```
+
+References
+----------
+This script is based on  
+
+- [chrome-extension-twitter-oauth-example/twitter.js](https://github.com/lambtron/chrome-extension-twitter-oauth-example/blob/master/js/lib/twitter.js)  
+    Copyright (c) 2017 Andy Jiang  
+    The MIT Licence  
+
+and  
+
+- [oauth-js/oauth.js](https://github.com/oauth-io/oauth-js/blob/master/dist/oauth.js) 
+    The Apache2 License
+
+is also referenced.  
+
+
+*/
 
 ( function () {
 
@@ -251,18 +336,18 @@ var based = ( typeof exports != 'undefined' ) ? exports : window,
 
 var TemplateTwitterAPI = {
     config : {
-        api_url_base : 'https://api.twitter.com',
         api_version : '1.1',
+        api_url_base : 'https://api.twitter.com',
+        login_verification_url : 'https://twitter.com/account/login_verification',
         
         consumer_key : '',
         consumer_secret : '',
+        callback_url : '',
         
         screen_name : '', // binded to oauth_token / oauth_token_secret
         
         oauth_token : '',
         oauth_token_secret : '',
-        
-        callback_url : '',
         
         popup_window_name : 'OAuthAuthorization',
         
@@ -270,13 +355,17 @@ var TemplateTwitterAPI = {
         auto_reauth : true,
         use_separate_popup_window : true,
         
-        popup_initial_timeout : 30000,
-        popup_closecheck_interval : 100,
-        popup_healthcheck_interval : 3000,
+        popup_closecheck_interval : 100, // milliseconds (0: disabled)
+        popup_initial_timeout : 30000, // milliseconds (0: disabled)
+        popup_healthcheck_interval : 3000, // milliseconds (0: disabled and ignore popup_initial_timeout)
     },
     
     popup_info : null,
     
+    current_user : {
+        user_id : '',
+        screen_name : ''
+    },
     
     initialize : function ( params ) {
         var self = this;
@@ -309,6 +398,10 @@ var TemplateTwitterAPI = {
             popup = function () {
                 self.config.oauth_token_secret = '';
                 self.config.oauth_token = '';
+                self.current_user = {
+                    user_id : '',
+                    screen_name : ''
+                };
                 
                 self.api( 'oauth/request_token', 'POST', { twauth_auto_reauth : false } )
                 .done( function ( response ) {
@@ -341,11 +434,16 @@ var TemplateTwitterAPI = {
                         popup_window_top = Math.floor( window.screenY + ( window.outerHeight - popup_window_height ) / 8 );
                         popup_window_left = Math.floor( window.screenX + ( window.outerWidth - popup_window_width ) / 2 );
                         
-                        var initial_popup_url = self.config.api_url_base + '/oauth/authenticate?oauth_token=' + self.config.oauth_token,
+                        var initial_popup_url = self.config.api_url_base + '/oauth/authenticate?oauth_token=' + self.config.oauth_token +
+                                ( ( self.config.screen_name ) ? ( '&screen_name=' + encodeURIComponent( self.config.screen_name ) ) : '' ),
                             parent_origin = get_origin( location.href ),
                             popup_origin_api = get_origin( self.config.api_url_base ),
+                            popup_origin_login_verification = get_origin( self.config.login_verification_url ),
                             popup_origin_callback = get_origin( self.config.callback_url ),
-                            popup_window_name = self.config.popup_window_name + '.' + parent_origin,
+                            popup_window_name = self.config.popup_window_name + '.' + JSON.stringify( {
+                                parent_origin : parent_origin,
+                                callback_url : self.config.callback_url
+                            } ),
                             popup_window_option = ( self.config.use_separate_popup_window ) ? [
                                 'width=' + popup_window_width,
                                 'height=' + popup_window_height,
@@ -356,12 +454,12 @@ var TemplateTwitterAPI = {
                             
                             popup_window = window.open( initial_popup_url, popup_window_name, popup_window_option ),
                             
-                            initial_timeout_timer_id = setTimeout( function () {
+                            initial_timeout_timer_id = ( self.config.popup_initial_timeout && self.config.popup_healthcheck_interval ) ? setTimeout( function () {
                                 console.error( new Date().toISOString(), 'connection timeout' );
                                 finish();
-                            }, self.config.popup_initial_timeout ),
+                            }, self.config.popup_initial_timeout ) : null,
                             
-                            closecheck_timer_id = setInterval( function () {
+                            closecheck_timer_id = ( self.config.popup_closecheck_interval ) ? setInterval( function () {
                                 try {
                                     if ( popup_window.closed ) {
                                         console.error( new Date().toISOString(), 'popup window closed' );
@@ -371,14 +469,14 @@ var TemplateTwitterAPI = {
                                 }
                                 catch ( error ) {
                                 }
-                            }, self.config.popup_closecheck_interval ),
+                            }, self.config.popup_closecheck_interval ) : null,
                             
                             healthcheck_timer_id = null,
                             healthcheck_counter = 0,
                             last_healthcheck_counter = 0,
                             
                             message_handler = function ( event ) {
-                                if ( ( event.origin != popup_origin_api ) && ( event.origin != popup_origin_callback ) ) {
+                                if ( ( event.origin != popup_origin_api ) && ( event.origin != popup_origin_login_verification ) && ( event.origin != popup_origin_callback ) ) {
                                     console.error( new Date().toISOString(), 'origin error:', event.origin );
                                     return;
                                 }
@@ -395,9 +493,9 @@ var TemplateTwitterAPI = {
                                         clearTimeout( initial_timeout_timer_id );
                                         initial_timeout_timer_id = null;
                                         
-                                        healthcheck_timer_id = setInterval( function () {
+                                        healthcheck_timer_id = ( self.config.popup_healthcheck_interval ) ? setInterval( function () {
                                             healthcheck_handler();
-                                        }, self.config.popup_healthcheck_interval );
+                                        }, self.config.popup_healthcheck_interval ) : null;
                                         break;
                                     
                                     case 'AUTH_RESULT' :
@@ -512,12 +610,13 @@ var TemplateTwitterAPI = {
     logout : function ( callback ) {
         var self = this,
             $deferred = new $.Deferred(),
-            $promise = $deferred.promise();
+            $promise = $deferred.promise(),
+            name_suffix = ( self.config.screen_name ) ? ( '.' + self.config.screen_name ) : '';
         
         self.config.oauth_token = '';
         self.config.oauth_token_secret = '';
         
-        remove_values( [ 'oauth_token', 'oauth_token_secret' ] )
+        remove_values( [ 'oauth_token' + name_suffix, 'oauth_token_secret' + name_suffix, 'oauth_user_id' + name_suffix, 'oauth_screen_name' + name_suffix ] )
         .done( function () {
             if ( typeof callback == 'function' ) {
                 $deferred
@@ -539,7 +638,7 @@ var TemplateTwitterAPI = {
             $promise = $deferred.promise(),
             name_suffix = ( self.config.screen_name ) ? ( '.' + self.config.screen_name ) : '';
         
-        get_values( [ 'oauth_token' + name_suffix, 'oauth_token_secret' + name_suffix ] )
+        get_values( [ 'oauth_token' + name_suffix, 'oauth_token_secret' + name_suffix, 'oauth_user_id' + name_suffix, 'oauth_screen_name' + name_suffix ] )
         .done( function ( tokens ) {
             if ( typeof callback == 'function' ) {
                 $deferred
@@ -571,7 +670,9 @@ var TemplateTwitterAPI = {
         self.getCachedTokens()
         .done( function ( tokens ) {
             var oauth_token = tokens[ 'oauth_token' + name_suffix ],
-                oauth_token_secret = tokens[ 'oauth_token_secret' + name_suffix ];
+                oauth_token_secret = tokens[ 'oauth_token_secret' + name_suffix ],
+                oauth_user_id = tokens[ 'oauth_user_id' + name_suffix ],
+                oauth_screen_name = tokens[ 'oauth_screen_name' + name_suffix ];
             
             if ( ( ! oauth_token ) || ( ! oauth_token_secret ) ) {
                 $deferred.reject( 'tokens not found' );
@@ -580,6 +681,11 @@ var TemplateTwitterAPI = {
             
             self.config.oauth_token = oauth_token;
             self.config.oauth_token_secret = oauth_token_secret;
+            
+            self.current_user = {
+                user_id : oauth_user_id,
+                screen_name : oauth_screen_name
+            };
             
             self.api( 'account/verify_credentials', 'GET', { twauth_auto_reauth : false } )
             .done( function ( json ) {
@@ -626,9 +732,16 @@ var TemplateTwitterAPI = {
         self.config.oauth_token = tokens.oauth_token;
         self.config.oauth_token_secret = tokens.oauth_token_secret;
         
+        self.current_user = {
+            user_id : tokens.user_id,
+            screen_name : tokens.screen_name
+        };
+        
         set_values( {
             [ 'oauth_token' + name_suffix ] : tokens.oauth_token,
-            [ 'oauth_token_secret' + name_suffix ] : tokens.oauth_token_secret
+            [ 'oauth_token_secret' + name_suffix ] : tokens.oauth_token_secret,
+            [ 'oauth_user_id' + name_suffix ] : tokens.user_id,
+            [ 'oauth_screen_name' + name_suffix ] : tokens.screen_name
         } )
         .done( function () {
             if ( typeof callback == 'function' ) {
@@ -642,6 +755,34 @@ var TemplateTwitterAPI = {
         
         return $promise;
     }, // end of setOAuthTokens()
+    
+    
+    getCurrentUser : function () {
+        var self = this;
+        
+        return self.current_user;
+    }, // end of getCurrentUser()
+    
+    
+    getCachedUser : function ( callback ) {
+        var self = this,
+            $deferred = new $.Deferred(),
+            $promise = $deferred.promise(),
+            name_suffix = ( self.config.screen_name ) ? ( '.' + self.config.screen_name ) : '';
+        
+        self.getCachedTokens()
+        .done( function ( tokens ) {
+            var oauth_user_id = tokens[ 'oauth_user_id' + name_suffix ],
+                oauth_screen_name = tokens[ 'oauth_screen_name' + name_suffix ];
+            
+            $deferred.resolve( {
+                user_id : oauth_user_id,
+                screen_name : oauth_screen_name
+            } );
+        } );
+        
+        return $promise;
+    }, // end of getCachedUser()
     
     
     api : function ( path ) { // ( path, params, callback )
@@ -794,12 +935,23 @@ var TemplateTwitterAPI = {
             return null;
         }
         else {
-            var popup_info = {
-                    name : RegExp.$1,
-                    parent_origin : RegExp.$2
-                };
+            var popup_window_name = RegExp.$1,
+                popup_info_json_string = RegExp.$2;
             
-            if ( popup_info.name != self.config.popup_window_name ) {
+            if ( popup_window_name != self.config.popup_window_name ) {
+                return null;
+            }
+            
+            var popup_info;
+            
+            try {
+                popup_info = JSON.parse( popup_info_json_string );
+                
+                if ( ! popup_info ) {
+                    return null;
+                }
+            }
+            catch ( error ) {
                 return null;
             }
             
@@ -811,9 +963,10 @@ var TemplateTwitterAPI = {
     initializePopupWindow : function () {
         var self = this,
             api_url_base = self.config.api_url_base,
-            callback_url = self.config.callback_url,
+            login_verification_url = self.config.login_verification_url,
             parent_window = window.opener,
             parent_origin = self.popup_info.parent_origin,
+            callback_url = self.popup_info.callback_url,
             healthcheck_timer_id;
         
         if ( callback_url && ( location.href.indexOf( callback_url ) == 0 ) ) {
@@ -824,7 +977,7 @@ var TemplateTwitterAPI = {
                 }
             }, parent_origin );
         }
-        else if ( api_url_base && ( location.href.indexOf( api_url_base ) == 0 ) ) {
+        else if ( ( api_url_base && ( location.href.indexOf( api_url_base ) == 0 ) ) || ( login_verification_url && location.href.indexOf( login_verification_url ) == 0 ) ) {
             healthcheck_timer_id = setInterval( function () {
                 parent_window.postMessage( {
                     type : 'NOTIFICATION',

@@ -16,7 +16,7 @@
 ,   "content_scripts" : [
         {
             "matches" : [ "*://twitter.com/*", "*://api.twitter.com/*", "*://*.furyutei.work/oauth/*" ]
-        ,   "js" : [ "js/jquery.min.js", "js/twitter-oauth/sha1.js", "js/twitter-oauth/oAuth.js", "js/twitter-oauth/twitter-api.js", "js/session.js" ]
+        ,   "js" : [ "js/jquery.min.js", "js/twitter-oauth/sha1.js", "js/twitter-oauth/oauth.js", "js/twitter-oauth/twitter-api.js", "js/session.js" ]
         ,   "run_at" : "document_start"
         ,   "all_frames" : false
         }

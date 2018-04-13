@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.1.25
+// @version         0.1.1.25.1
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -18,15 +18,15 @@
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/decimal.js/7.3.0/decimal.min.js
 // @require         https://furyutei.work/userjs/furyutei/sha1.js
-// @require         https://furyutei.work/userjs/furyutei/oAuth.js
+// @require         https://furyutei.work/userjs/furyutei/oauth.js
 // @require         https://furyutei.work/userjs/furyutei/twitter-api.js
 // ==/UserScript==
 
 /*
 ■ 外部ライブラリ
 - [jQuery](https://jquery.com/), [jquery/jquery: jQuery JavaScript Library](https://github.com/jquery/jquery)  
-    The MIT License  
     [License | jQuery Foundation](https://jquery.org/license/)  
+    The MIT License  
 
 - [JSZip](https://stuk.github.io/jszip/)  
     Copyright (c) 2009-2014 Stuart Knightley, David Duponchel, Franz Buchinger, António Afonso  
@@ -38,14 +38,25 @@
     The MIT Licence  
     [decimal.js/LICENCE.md](https://github.com/MikeMcl/decimal.js/blob/master/LICENCE.md)  
 
+- [sha1.js](http://pajhome.org.uk/crypt/md5/sha1.html)  
+    Copyright Paul Johnston 2000 - 2009
+    The BSD License
+
+- [oauth.js](http://code.google.com/p/oauth/source/browse/code/javascript/oauth.js)(^1)  
+    Copyright 2008 Netflix, Inc.
+    [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)  
+    (^1) archived: [oauth.js](https://web.archive.org/web/20130921042751/http://code.google.com/p/oauth/source/browse/code/javascript/oauth.js)  
+
+
+■ 関連記事など
+- [Twitter メディアダウンローダ：ユーザータイムラインの原寸画像や動画をまとめてダウンロードするユーザースクリプト(PC用Google Chrome・Firefox等対応) - 風柳メモ](http://furyu.hatenablog.com/entry/20160723/1469282864)  
+
+- [furyutei/twMediaDownloader: Download images of user's media-timeline on Twitter.](https://github.com/furyutei/twMediaDownloader)  
+
 - [lambtron/chrome-extension-twitter-oauth-example: Chrome Extension Twitter Oauth Example](https://github.com/lambtron/chrome-extension-twitter-oauth-example)  
     Copyright (c) 2017 Andy Jiang  
     The MIT Licence  
     [chrome-extension-twitter-oauth-example/LICENSE](https://github.com/lambtron/chrome-extension-twitter-oauth-example/blob/master/LICENSE)  
-
-■ 関連記事など
-- [Twitter メディアダウンローダ：ユーザータイムラインの原寸画像や動画をまとめてダウンロードするユーザースクリプト(PC用Google Chrome・Firefox等対応) - 風柳メモ](http://furyu.hatenablog.com/entry/20160723/1469282864)  
-- [furyutei/twMediaDownloader: Download images of user's media-timeline on Twitter.](https://github.com/furyutei/twMediaDownloader)  
 */
 
 /*
@@ -116,16 +127,15 @@ var OPTIONS = {
 // ■ 共通変数 {
 var SCRIPT_NAME = 'twMediaDownloader',
     IS_CHROME_EXTENSION = !! ( w.is_chrome_extension ),
-    OAUTH_CALLBACK_URL = 'https://nazo.furyutei.work/oauth/',
+    OAUTH_POPUP_WINDOW_NAME = SCRIPT_NAME + '-OAuthAuthorization',
     DEBUG = false;
 
-if ( ! /^https:\/\/twitter\.com/.test( w.location.href ) ) {
+if ( ! /^https:\/\/twitter\.com(?!\/account\/login_verification)/.test( w.location.href ) ) {
     if ( ( ! IS_CHROME_EXTENSION ) && ( typeof Twitter != 'undefined' ) ) {
         // Twitter OAuth 認証用ポップアップとして起動した場合は、Twitter.initialize() により tokens 取得用処理を実施（内部でTwitter.initializePopupWindow()を呼び出し）
         // ※ユーザースクリプトでの処理（拡張機能の場合、session.jsにて実施）
         Twitter.initialize( {
-            callback_url : OAUTH_CALLBACK_URL,
-            popup_window_name : SCRIPT_NAME + '-OAuthAuthorization'
+            popup_window_name : OAUTH_POPUP_WINDOW_NAME
         } );
     }
     return;
@@ -138,7 +148,9 @@ if ( /^https:\/\/twitter\.com\/i\/cards/.test( w.location.href ) ) {
 
 
 if ( ( typeof jQuery != 'function' ) || ( ( typeof JSZip != 'function' ) && ( typeof ZipRequest != 'function' ) ) || ( typeof Decimal != 'function' ) ) {
-    console.error( SCRIPT_NAME + ':', 'Library not found - ', 'jQuery:', typeof jQuery, 'JSZip:', typeof JSZip, 'ZipRequest:', typeof ZipRequest, 'Decimal:', typeof Decimal );
+    if ( w === w.top ) {
+        console.error( SCRIPT_NAME + '(' + location.href + '):', 'Library not found - ', 'jQuery:', typeof jQuery, 'JSZip:', typeof JSZip, 'ZipRequest:', typeof ZipRequest, 'Decimal:', typeof Decimal );
+    }
     return;
 }
 
@@ -185,6 +197,7 @@ var LANGUAGE = ( function () {
     
     OAUTH_CONSUMER_KEY = 'kyxX7ZLs2D3efqDbpK8Mqnpnr',
     OAUTH_CONSUMER_SECRET = 'D85tY89jQoWWVH8oNjIg28PJfK4S2louq5NPxw8VzvlKBwSR0x',
+    OAUTH_CALLBACK_URL = 'https://nazo.furyutei.work/oauth/',
     
     OAUTH2_TOKEN_API_URL = 'https://api.twitter.com/oauth2/token',
     ENCODED_TOKEN_CREDENTIAL = 'a3l4WDdaTHMyRDNlZnFEYnBLOE1xbnBucjpEODV0WTg5alFvV1dWSDhvTmpJZzI4UEpmSzRTMmxvdXE1TlB4dzhWenZsS0J3U1IweA==',
@@ -951,7 +964,7 @@ function initialize_twitter_api() {
             consumer_key : OAUTH_CONSUMER_KEY,
             consumer_secret : OAUTH_CONSUMER_SECRET,
             callback_url : OAUTH_CALLBACK_URL,
-            popup_window_name : SCRIPT_NAME + '-OAuthAuthorization',
+            popup_window_name : OAUTH_POPUP_WINDOW_NAME,
             use_cache : true,
             auto_reauth : true
         } )
@@ -966,7 +979,9 @@ function initialize_twitter_api() {
                 
                 twitter_api = api;
                 
-                log_info( 'User authentication (OAuth 1.1) is enabled.' );
+                var current_user = Twitter.getCurrentUser();
+                
+                log_info( 'User authentication (OAuth 1.1) is enabled. (screen_name:' + current_user.screen_name + ', user_id:' + current_user.user_id + ')' );
                 
                 finish();
             } )
