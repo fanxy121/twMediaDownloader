@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.1.25.1
+// @version         0.1.1.25.2
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -981,7 +981,7 @@ function initialize_twitter_api() {
                 
                 var current_user = Twitter.getCurrentUser();
                 
-                log_info( 'User authentication (OAuth 1.1) is enabled. (screen_name:' + current_user.screen_name + ', user_id:' + current_user.user_id + ')' );
+                log_info( 'User authentication (OAuth 1.0a) is enabled. (screen_name:' + current_user.screen_name + ', user_id:' + current_user.user_id + ')' );
                 
                 finish();
             } )
@@ -1046,12 +1046,14 @@ function twitter_api_get_json( api_url, options ) {
     
     return twitter_api_delay().then( function () {
         if ( twitter_api ) {
-            var api_options = {};
+            var parameters = {};
             
             if ( options.auto_reauth ) {
-                api_options.twauth_auto_reauth = options.auto_reauth;
+                parameters.api_options = {
+                    auto_reauth : options.auto_reauth
+                };
             }
-            return twitter_api( api_url, 'GET', api_options );
+            return twitter_api( api_url, 'GET', parameters );
         }
         else if ( oauth2_access_token ) {
             return $.ajax( {

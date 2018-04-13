@@ -335,6 +335,8 @@ var based = ( typeof exports != 'undefined' ) ? exports : window,
 
 
 var TemplateTwitterAPI = {
+    version : '0.1.1',
+    
     config : {
         api_version : '1.1',
         api_url_base : 'https://api.twitter.com',
@@ -396,6 +398,15 @@ var TemplateTwitterAPI = {
             $promise = $deferred.promise(),
             
             popup = function () {
+                var post_parameters = {
+                        parameters : {
+                            oauth_callback : self.config.callback_url
+                        },
+                        api_options : {
+                            auto_reauth : false
+                        }
+                    };
+                
                 self.config.oauth_token_secret = '';
                 self.config.oauth_token = '';
                 self.current_user = {
@@ -403,7 +414,7 @@ var TemplateTwitterAPI = {
                     screen_name : ''
                 };
                 
-                self.api( 'oauth/request_token', 'POST', { twauth_auto_reauth : false } )
+                self.api( 'oauth/request_token', 'POST', post_parameters )
                 .done( function ( response ) {
                     var params = self.deparam( response );
                     
@@ -553,8 +564,14 @@ var TemplateTwitterAPI = {
                                 }
                                 
                                 // Get access tokens again.
-                                session_params.twauth_auto_reauth = false;
-                                self.api( 'oauth/access_token', 'POST', session_params )
+                                post_parameters = {
+                                    parameters : session_params,
+                                    api_options : {
+                                        auto_reauth : false
+                                    }
+                                };
+                                
+                                self.api( 'oauth/access_token', 'POST', post_parameters )
                                 .done( function ( result ) {
                                     var tokens = self.deparam( result );
                                     
@@ -687,7 +704,11 @@ var TemplateTwitterAPI = {
                 screen_name : oauth_screen_name
             };
             
-            self.api( 'account/verify_credentials', 'GET', { twauth_auto_reauth : false } )
+            self.api( 'account/verify_credentials', 'GET', {
+                api_options : {
+                    auto_reauth : false
+                }
+            } )
             .done( function ( json ) {
                 if ( ( self.config.screen_name ) && ( self.config.screen_name != json.screen_name ) ) {
                     $deferred.reject( 'screen_name mismatch' );
@@ -795,7 +816,9 @@ var TemplateTwitterAPI = {
             callback = null,
             params = {},
             method = 'GET',
-            auto_reauth = self.config.auto_reauth;
+            api_options = {
+                auto_reauth : self.config.auto_reauth
+            };
         
         path = path_parts[ 0 ].replace( /^https?:\/\/[^\/]+/, '' );
         
@@ -827,19 +850,44 @@ var TemplateTwitterAPI = {
                 
                 case 'object' :
                     Object.keys( arg ).forEach( function ( key ) {
-                        switch ( key ) {
-                            case 'twauth_auto_reauth' :
-                                if ( arg[ key ] !== undefined ) {
-                                    auto_reauth = arg[ key ];
+                        var value = arg[ key ];
+                        
+                        switch ( typeof value ) {
+                            case 'object' :
+                                if ( key == 'api_options' ) {
+                                    Object.keys( value ).forEach( function ( option_name ) {
+                                        var option_value = value[ option_name ];
+                                        
+                                        if ( typeof option_value == 'undefined' ) {
+                                            return;
+                                        }
+                                        
+                                        switch ( option_name ) {
+                                            case 'auto_reauth' :
+                                                api_options.auto_reauth = option_value;
+                                                return;
+                                        }
+                                    } );
+                                }
+                                else if ( key == 'parameters' ) {
+                                    Object.keys( value ).forEach( function ( param_key ) {
+                                        var param_value = value[ param_key ];
+                                        
+                                        if ( typeof param_value != 'undefined' ) {
+                                            params[ param_key ] = param_value;
+                                        }
+                                    } );
                                 }
                                 return;
+                            
+                            case 'string' :
+                                params[ key ] = value;
+                                return;
                         }
-                        
-                        params[ key ] = arg[ key ];
                     } );
                     break;
                 
-                case 'string':
+                case 'string' :
                     method = arg.toUpperCase();
                     break;
             }
@@ -882,7 +930,7 @@ var TemplateTwitterAPI = {
         .fail( function ( jqXHR, textStatus, errorThrown ) {
             var fail_arguments = arguments;
             
-            if ( ! auto_reauth ) {
+            if ( ! api_options.auto_reauth ) {
                 $deferred.reject.apply( $deferred, fail_arguments );
                 return;
             }
