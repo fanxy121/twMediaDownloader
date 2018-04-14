@@ -124,11 +124,41 @@ is also referenced.
 
 'use strict';
 
-if ( typeof browser == 'undefined' ) { window.browser = ( typeof chrome != 'undefined' ) ? chrome : null; }
+( function ( factory ) {
+    if ( ( typeof define == 'function' ) && ( define.amd ) ) {
+        // AMD. Register as anonymous module.
+        define( [], factory );
+    }
+    else if ( ( typeof exports == 'object' ) && ( typeof module != 'undefined' ) ) {
+        // CommonJS
+        module.exports = factory();
+    }
+    else {
+        // Browser globals.
+        var global_object;
+        
+        if ( typeof window != 'undefined' ) {
+            global_object = window;
+        }
+        else if ( typeof global != 'undefined' ) {
+            global_object = global;
+        }
+        else if ( typeof self != 'undefined' ) {
+            global_object = self;
+        }
+        else {
+            global_object = this;
+        }
+        
+        global_object.Twitter = factory();
+    }
+} )( function () {
 
-var based = ( typeof exports != 'undefined' ) ? exports : window,
-    
-    set_values = ( function () {
+if ( ( typeof browser == 'undefined' ) && ( typeof window != 'undefined' ) ) {
+    window.browser = ( typeof chrome != 'undefined' ) ? chrome : null;
+}
+
+var set_values = ( function () {
         if ( browser &&  browser.storage ) {
             return function ( name_value_map, callback ) {
                 var $deferred = new $.Deferred(),
@@ -229,6 +259,10 @@ var based = ( typeof exports != 'undefined' ) ? exports : window,
                 $promise = $deferred.promise(),
                 name_value_map = {};
             
+            if ( typeof name_list == 'string' ) {
+                name_list = [ name_list ];
+            }
+            
             name_list.forEach( function ( name ) {
                 name_value_map[ name ] = get_value( name );
             } );
@@ -282,11 +316,15 @@ var based = ( typeof exports != 'undefined' ) ? exports : window,
             };
         } )(); // end of remove_value()
         
-        return function ( name_value_map, callback ) {
+        return function ( name_list,  callback ) {
             var $deferred = new $.Deferred(),
                 $promise = $deferred.promise();
             
-            Object.keys( name_value_map ).forEach( function ( name ) {
+            if ( typeof name_list == 'string' ) {
+                name_list = [ name_list ];
+            }
+            
+            name_list.forEach( function ( name ) {
                 remove_value( name );
             } );
             
@@ -395,7 +433,14 @@ var TemplateTwitterAPI = {
     authenticate : function ( options ) {
         var self = this,
             $deferred = new $.Deferred(),
-            $promise = $deferred.promise(),
+            $promise = $deferred.promise();
+        
+        if ( ! options ) {
+            options = {};
+        }
+        
+        var force_login = ( typeof options.force_login != 'undefined' ) ? options.force_login : false,
+            use_cache = ( ( ! force_login ) && ( typeof options.use_cache != 'undefined' ) ) ? options.use_cache : self.config.use_cache,
             
             popup = function () {
                 var post_parameters = {
@@ -445,8 +490,21 @@ var TemplateTwitterAPI = {
                         popup_window_top = Math.floor( window.screenY + ( window.outerHeight - popup_window_height ) / 8 );
                         popup_window_left = Math.floor( window.screenX + ( window.outerWidth - popup_window_width ) / 2 );
                         
-                        var initial_popup_url = self.config.api_url_base + '/oauth/authenticate?oauth_token=' + self.config.oauth_token +
-                                ( ( self.config.screen_name ) ? ( '&screen_name=' + encodeURIComponent( self.config.screen_name ) ) : '' ),
+                        var authenticate_params = {
+                                oauth_token : self.config.oauth_token
+                            };
+                        
+                        if ( force_login ) {
+                            authenticate_params.force_login = 'true';
+                        }
+                        
+                        if ( self.config.screen_name ) {
+                            authenticate_params.screen_name = self.config.screen_name;
+                        }
+                        
+                        var initial_popup_url = self.config.api_url_base + '/oauth/authenticate?' + Object.keys( authenticate_params ).map( function ( name ) {
+                                    return name + '=' + encodeURIComponent( authenticate_params[ name ] );
+                                } ).join( '&' ),
                             parent_origin = get_origin( location.href ),
                             popup_origin_api = get_origin( self.config.api_url_base ),
                             popup_origin_login_verification = get_origin( self.config.login_verification_url ),
@@ -552,14 +610,14 @@ var TemplateTwitterAPI = {
                                 }
                                 
                                 if ( ! session ) {
-                                    $deferred.reject( 'Authorization failure' );
+                                    $deferred.reject( 'Authorization failure (process interrupted)' );
                                     return;
                                 }
                                 
                                 var session_params = self.deparam( session );
                                 
                                 if ( typeof session_params.denied != 'undefined' ) {
-                                    $deferred.reject( 'Authorization refused' );
+                                    $deferred.reject( 'Authorization refused', session_params );
                                     return;
                                 }
                                 
@@ -582,11 +640,11 @@ var TemplateTwitterAPI = {
                                         } );
                                     } )
                                     .fail( function ( error ) {
-                                        $deferred.reject( 'Authorization failure (oauth/access_token) : ' + error );
+                                        $deferred.reject( 'Authorization failure (oauth/access_token) : ' + error, tokens );
                                     } );
                                 } )
                                 .fail( function ( result ) {
-                                    $deferred.reject( 'Authorization failure (oauth/access_token)' );
+                                    $deferred.reject( 'Authorization failure (oauth/access_token)', session_params );
                                 } );
                             };
                         
@@ -594,23 +652,15 @@ var TemplateTwitterAPI = {
                     } );
                 } )
                 .fail( function ( result ) {
-                    $deferred.reject( 'Authorization failure (oauth/request_token)' );
+                    $deferred.reject( 'Authorization failure (oauth/request_token)', post_parameters.parameters );
                 } );
             };
             
         
-        if ( ! options ) {
-            options = {};
-        }
-        
-        var use_cache = ( typeof options.use_cache != 'undefined' ) ? options.use_cache : self.config.use_cache;
-        
         if ( use_cache ) {
             self.isAuthenticated()
-            .done( function ( result ) {
-                $deferred.resolve( function () {
-                    return self.api.apply( self, arguments );
-                } );
+            .done( function ( api, result ) {
+                $deferred.resolve( api );
             } )
             .fail( function ( result ) {
                 popup();
@@ -714,7 +764,10 @@ var TemplateTwitterAPI = {
                     $deferred.reject( 'screen_name mismatch' );
                     return;
                 }
-                $deferred.resolve( 'OK' );
+                
+                $deferred.resolve( function () {
+                    return self.api.apply( self, arguments );
+                }, json );
             } )
             .fail( function () {
                 self.logout()
@@ -1076,7 +1129,8 @@ var TemplateTwitterAPI = {
     
 }; // end of TemplateTwitterAPI
 
+return object_extender( TemplateTwitterAPI );
 
-based.Twitter = object_extender( TemplateTwitterAPI );
+} );
 
 } )();
