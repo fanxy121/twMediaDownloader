@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.1.25.2
+// @version         0.1.1.26
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -1364,8 +1364,15 @@ var download_media_timeline = ( function () {
                         // items_html/min_position が json.inner ではなく、json 直下にある場合もある（未ログイン時など）
                     
                     if ( ( ! json_inner ) ||  ( ! json_inner.items_html ) || ( ! json_inner.min_position ) ) {
-                        log_error( 'items not found' );
-                        self.timeline_status = 'end';
+                        if ( filter_info.is_for_likes_timeline ) {
+                            log_error( 'items not found' );
+                            self.timeline_status = 'end';
+                        }
+                        else {
+                            // 検索タイムラインにかかるケース有り
+                            log_info( 'change timeline (media -> search): max_position=', media_timeline_parameters.max_position );
+                            self.timeline_status = 'search';
+                        }
                         return;
                     }
                     
@@ -1394,6 +1401,7 @@ var download_media_timeline = ( function () {
                                 media_timeline_parameters.max_position = min_tweet_id;
                             }
                             else {
+                                log_info( 'change timeline (media -> search): max_position=', media_timeline_parameters.max_position );
                                 self.timeline_status = 'search';
                             }
                         }
@@ -1422,6 +1430,7 @@ var download_media_timeline = ( function () {
                                 self.timeline_status = 'end';
                             }
                             else {
+                                log_info( 'change timeline (media -> search): max_position=', media_timeline_parameters.max_position );
                                 self.timeline_status = 'search';
                             }
                         }
