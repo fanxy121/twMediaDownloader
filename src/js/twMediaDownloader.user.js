@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.1.26
+// @version         0.1.1.27
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -119,6 +119,7 @@ var OPTIONS = {
     // Twitter API には Rate Limit があるため、続けてコールする際に待ち時間を挟む
     // /statuses/show.json の場合、15分で900回（正確に 900回／15分というわけではなく、15分毎にリセットされる）→1秒以上は空けておく
     // TODO: 別のタブで並列して実行されている場合や、別ブラウザでの実行は考慮していない
+,   TWITTER_OAUTH_POPUP : false // true: OAuth 認証時、ポップアップウィンドウを使用(ブラウザのポップアップブロックに妨げられる恐れあり)
 };
 
 // }
@@ -952,7 +953,15 @@ function initialize_twitter_api() {
     var jq_deferred = new $.Deferred(),
         finish = function () {
             jq_deferred.resolve();
-        };
+        },
+        logined_screen_name = ( function () {
+            try {
+                return $( '#user-dropdown .current-user a.js-nav' ).attr( 'href' ).match( /[^\/]+$/ )[ 0 ];
+            }
+            catch ( error ) {
+                return '';
+            }
+        } )();
     
     if ( twitter_api || oauth2_access_token ) {
         finish();
@@ -964,9 +973,11 @@ function initialize_twitter_api() {
             consumer_key : OAUTH_CONSUMER_KEY,
             consumer_secret : OAUTH_CONSUMER_SECRET,
             callback_url : OAUTH_CALLBACK_URL,
+            screen_name : logined_screen_name,
             popup_window_name : OAUTH_POPUP_WINDOW_NAME,
             use_cache : true,
-            auto_reauth : true
+            auto_reauth : true,
+            use_separate_popup_window : OPTIONS.TWITTER_OAUTH_POPUP
         } )
         .authenticate()
         .done( function ( api ) {
