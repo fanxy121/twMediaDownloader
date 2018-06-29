@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.1.27
+// @version         0.1.1.28
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -1158,9 +1158,16 @@ var download_media_timeline = ( function () {
         
         ,   api_limit_retry_number : 10 // API 最大リトライ回数(要調整)
         
+        ,   search_api_filter_names : [ 's', 'near', 'l', 'qf' ] // 検索フィルタークエリ名リスト
+            // s: 対象アカウント(follows:フォローしているユーザーのみ)
+            // near: 場所（me：近くの場所)
+            // l: 言語
+            // qf: クオリティフィルター
+        
         ,   init : function ( screen_name, until_id, since_id, filter_info ) {
                 var self = this,
-                    is_search_timeline = self.is_search_timeline = judge_search_timeline();
+                    is_search_timeline = self.is_search_timeline = judge_search_timeline(),
+                    url_info = get_url_info( w.location.href );
                 
                 self.api_retry_remaining_number = self.api_limit_retry_number;
                 self.api_max_retry_number = 0;
@@ -1263,6 +1270,17 @@ var download_media_timeline = ( function () {
                         }
                     }
                 };
+                
+                if ( is_search_timeline ) {
+                    self.search_api_filter_names.forEach( function ( name ) {
+                        var value = url_info.query_map[ name ];
+                        
+                        if ( value ) {
+                            self.search_timeline_parameters.html_endpoint.data[ name ] = value;
+                            self.search_timeline_parameters.api_endpoint.data[ name ] = value;
+                        }
+                    } );
+                }
                 
                 return self;
             } // end of init()
@@ -1569,6 +1587,13 @@ var download_media_timeline = ( function () {
                 
                 if ( self.is_search_timeline ) {
                     html_data.q = self.search_query;
+                    
+                    if ( self.until_id != self.DEFAULT_UNTIL_ID ) {
+                        html_data.q = html_data.q.replace( /-?max_id:\d+(?:\s+OR\s+)?/g, ' ' ) + ' max_id:' + Decimal.sub( self.until_id, 1 ).toString();
+                    }
+                    if ( self.since_id ) {
+                        html_data.q = html_data.q.replace( /-?since_id:\d+(?:\s+OR\s+)?/g, ' ' ) + ' since_id:' + self.since_id;
+                    }
                 }
                 else {
                     html_data.q = 'from:' + self.screen_name;
@@ -2156,6 +2181,14 @@ var download_media_timeline = ( function () {
                 self.jq_until_date = jq_until_date = jq_range_container.find( 'tr.date-range td.until-date' );
                 
                 
+                function get_reg_time_string( time_string )  {
+                    if ( time_string.match( /^(\d{4})(\d{2})(\d{2})[_\-](\d{2})(\d{2})(\d{2})$/ ) ) {
+                        time_string = RegExp.$1 + '/' + RegExp.$2 + '/' + RegExp.$3 + ' ' + RegExp.$4 + ':' + RegExp.$5 + ':' + RegExp.$6;
+                    }
+                    return time_string;
+                } // end of get_reg_time_string()
+                
+                
                 function set_change_event( jq_target_id, jq_target_date ) {
                     jq_target_id.change( function ( event ) {
                         var val = jq_target_id.val().trim(),
@@ -2164,9 +2197,7 @@ var download_media_timeline = ( function () {
                             date_string = '';
                         
                         if ( self.is_for_likes_timeline ) {
-                            if ( val.match( /^(\d{4})(\d{2})(\d{2})[_\-](\d{2})(\d{2})(\d{2})$/ ) ) {
-                                val = RegExp.$1 + '/' + RegExp.$2 + '/' + RegExp.$3 + ' ' + RegExp.$4 + ':' + RegExp.$5 + ':' + RegExp.$6;
-                            }
+                            val = get_reg_time_string( val );
                             
                             date = new Date( val );
                             
@@ -2185,6 +2216,7 @@ var download_media_timeline = ( function () {
                             tweet_id = get_tweet_id( val );
                             
                             if ( ! tweet_id ) {
+                                val = get_reg_time_string( val );
                                 tweet_id = datetime_to_tweet_id( val );
                             }
                             if ( ! tweet_id ) {
@@ -2671,6 +2703,12 @@ var download_media_timeline = ( function () {
                 else {
                     zip = new JSZip();
                 }
+                
+                self.log( 'Target URL :', w.location.href );
+                self.csv_push_row( {
+                    tweet_date : 'Target URL:',
+                    action_date : w.location.href
+                } );
                 
                 if ( MediaTimeline.search_query ) {
                     self.log( 'Search Query :', MediaTimeline.search_query );
