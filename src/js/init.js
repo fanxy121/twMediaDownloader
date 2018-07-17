@@ -122,6 +122,15 @@ var twMediaDownloader_chrome_init = ( function() {
     return get_init_function( 'GET_OPTIONS', option_name_to_function_map );
 } )(); // end of twMediaDownloader_chrome_init()
 
+
+if ( ( typeof content != 'undefined' ) && ( typeof content.XMLHttpRequest == 'function' ) ) {
+    jQuery.ajaxSettings.xhr = function () {
+        try {
+            return new content.XMLHttpRequest();
+        } catch ( e ) {}
+    };
+}
+
 w.is_chrome_extension = true;
 w.twMediaDownloader_chrome_init = twMediaDownloader_chrome_init;
 w.async_get_values = async_get_values;
