@@ -79,26 +79,29 @@ function on_message( message, sender, sendResponse ) {
 chrome.runtime.onMessage.addListener( on_message );
 
 // WebRequest
-// ※ Firefox 61.0.1 で、content_scripts で $.ajax() を読んだ際、Referer が設定されない不具合に対応
-chrome.webRequest.onBeforeSendHeaders.addListener(
-    function ( details ) {
-        var requestHeaders = details.requestHeaders,
-            referer;
-        
-        if ( ! requestHeaders.some( ( element ) => ( element.name.toLowerCase() == 'referer' ) ) ) {
-            referer = details.documentUrl || 'https://twitter.com';
-            
-            requestHeaders.push( {
-                name : 'Referer',
-                value : referer,
-            } );
-        }
-        
-        return { requestHeaders: requestHeaders };
-    }
-,   { urls : [ '*://twitter.com/*' ] }
-,   [ 'blocking', 'requestHeaders' ]
-);
+
+//// ※ Firefox 61.0.1 で、content_scripts で $.ajax() を読んだ際、Referer が設定されない不具合に対応(0.2.6.1201)
+// → jquery.js にパッチをあてることで対処(0.2.6.1202)
+// 参照：[Content scripts - Mozilla | MDN](https://developer.mozilla.org/en-US/Add-ons/WebExtensions/Content_scripts#XHR_and_Fetch)
+//chrome.webRequest.onBeforeSendHeaders.addListener(
+//    function ( details ) {
+//        var requestHeaders = details.requestHeaders,
+//            referer;
+//        
+//        if ( ! requestHeaders.some( ( element ) => ( element.name.toLowerCase() == 'referer' ) ) ) {
+//            referer = details.documentUrl || 'https://twitter.com';
+//            
+//            requestHeaders.push( {
+//                name : 'Referer',
+//                value : referer,
+//            } );
+//        }
+//        
+//        return { requestHeaders: requestHeaders };
+//    }
+//,   { urls : [ '*://twitter.com/*' ] }
+//,   [ 'blocking', 'requestHeaders' ]
+//);
 
 
 // ※ OAuth2 の token 取得時に Cookie を送信しないようにする

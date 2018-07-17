@@ -9455,11 +9455,22 @@ jQuery.expr.pseudos.visible = function( elem ) {
 
 
 
-jQuery.ajaxSettings.xhr = function() {
-	try {
-		return new window.XMLHttpRequest();
-	} catch ( e ) {}
-};
+if ( ( typeof content != 'undefined' ) && ( typeof content.XMLHttpRequest == 'function' ) ) {
+	// Fixed for Firefox(>=58)
+	// [Content scripts - Mozilla | MDN](https://developer.mozilla.org/en-US/Add-ons/WebExtensions/Content_scripts#XHR_and_Fetch)
+	jQuery.ajaxSettings.xhr = function() {
+		try {
+			return new content.XMLHttpRequest();
+		} catch ( e ) {}
+	};
+}
+else {
+	jQuery.ajaxSettings.xhr = function() {
+		try {
+			return new window.XMLHttpRequest();
+		} catch ( e ) {}
+	};
+}
 
 var xhrSuccessStatus = {
 
