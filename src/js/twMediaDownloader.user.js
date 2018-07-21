@@ -228,8 +228,10 @@ switch ( LANGUAGE ) {
         OPTIONS.DOWNLOAD_BUTTON_TEXT = '⇩';
         OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG = 'メディア ⇩';
         OPTIONS.DOWNLOAD_BUTTON_HELP_TEXT = 'タイムラインの画像/動画を保存';
-        OPTIONS.DIALOG_TWEET_ID_RANGE_HEADER = '対象 Tweet ID 範囲';
+        OPTIONS.DIALOG_TWEET_ID_RANGE_HEADER = '対象 Tweet ID 範囲 (空欄時は制限なし)';
         OPTIONS.DIALOG_TWEET_ID_RANGE_MARK = '＜ ID ＜';
+        OPTIONS.DIALOG_TWEET_ID_PLACEHOLDER_LEFT = '下限IDまたは日時';
+        OPTIONS.DIALOG_TWEET_ID_PLACEHOLDER_RIGHT = '上限IDまたは日時';
         OPTIONS.DIALOG_LIMIT_TWEET_NUMBER_TEXT = '制限数';
         OPTIONS.DIALOG_BUTTON_START_TEXT = '開始';
         OPTIONS.DIALOG_BUTTON_STOP_TEXT = '停止';
@@ -248,15 +250,19 @@ switch ( LANGUAGE ) {
         
         OPTIONS.LIKES_DOWNLOAD_BUTTON_TEXT_LONG = 'いいね ⇩';
         OPTIONS.LIKES_DOWNLOAD_BUTTON_HELP_TEXT = '『いいね』をしたツイートの画像/動画を保存';
-        OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_HEADER = '対象『いいね』日時範囲';
+        OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_HEADER = '対象『いいね』日時範囲 (空欄時は制限なし)';
         OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_MARK = '＜ 日時 ＜';
+        OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_LEFT = '下限日時';
+        OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_RIGHT = '上限日時';
         break;
     default:
         OPTIONS.DOWNLOAD_BUTTON_TEXT = '⇩';
         OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG = 'Media ⇩';
         OPTIONS.DOWNLOAD_BUTTON_HELP_TEXT = 'Download images/videos from timeline';
-        OPTIONS.DIALOG_TWEET_ID_RANGE_HEADER = 'Download Tweet ID range';
+        OPTIONS.DIALOG_TWEET_ID_RANGE_HEADER = 'Download Tweet ID range (There is no limit when left blank)';
         OPTIONS.DIALOG_TWEET_ID_RANGE_MARK = '< ID <';
+        OPTIONS.DIALOG_TWEET_ID_PLACEHOLDER_LEFT = 'Since ID or datetime';
+        OPTIONS.DIALOG_TWEET_ID_PLACEHOLDER_RIGHT = 'Until ID or datetime';
         OPTIONS.DIALOG_LIMIT_TWEET_NUMBER_TEXT = 'Limit';
         OPTIONS.DIALOG_BUTTON_START_TEXT = 'Start';
         OPTIONS.DIALOG_BUTTON_STOP_TEXT = 'Stop';
@@ -275,8 +281,10 @@ switch ( LANGUAGE ) {
         
         OPTIONS.LIKES_DOWNLOAD_BUTTON_TEXT_LONG = 'Likes ⇩';
         OPTIONS.LIKES_DOWNLOAD_BUTTON_HELP_TEXT = 'Download images/videos from Likes-timeline';
-        OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_HEADER = 'Download "Likes" date-time range';
+        OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_HEADER = 'Download "Likes" date-time range (There is no limit when left blank)';
         OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_MARK = '< DATETIME <';
+        OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_LEFT = 'Since datetime';
+        OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_RIGHT = 'Until datetime';
         break;
 }
 
@@ -2172,6 +2180,7 @@ var download_media_timeline = ( function () {
                     .css( {
                         'margin' : '12px 16px 6px 16px'
                     //,   'color' : '#66757f'
+                    ,   'font-size' : '16px'
                     } );
                 
                 jq_range_header.find( 'span.range_header_text' )
@@ -2610,10 +2619,14 @@ var download_media_timeline = ( function () {
                 jq_range_container = self.jq_range_container;
                 
                 if ( is_for_likes_timeline ) {
+                    jq_range_container.find( 'input[name="since_id"]' ).attr( 'placeholder', OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_LEFT );
+                    jq_range_container.find( 'input[name="until_id"]' ).attr( 'placeholder', OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_RIGHT );
                     jq_range_container.find( 'h3 > span.range_header_text' ).text( OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_HEADER );
                     jq_range_container.find( 'span.range_text' ).text( OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_MARK );
                 }
                 else {
+                    jq_range_container.find( 'input[name="since_id"]' ).attr( 'placeholder', OPTIONS.DIALOG_TWEET_ID_PLACEHOLDER_LEFT );
+                    jq_range_container.find( 'input[name="until_id"]' ).attr( 'placeholder', OPTIONS.DIALOG_TWEET_ID_PLACEHOLDER_RIGHT );
                     jq_range_container.find( 'h3 > span.range_header_text' ).text( OPTIONS.DIALOG_TWEET_ID_RANGE_HEADER );
                     jq_range_container.find( 'span.range_text' ).text( OPTIONS.DIALOG_TWEET_ID_RANGE_MARK );
                 }
