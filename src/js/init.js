@@ -116,6 +116,7 @@ var twMediaDownloader_chrome_init = ( function() {
         ,   ENABLE_ZIPREQUEST : get_bool
         ,   ENABLE_FILTER : get_bool
         ,   DOWNLOAD_SIZE_LIMIT_MB : get_int
+        ,   ENABLE_VIDEO_DOWNLOAD : get_bool
         ,   INCOGNITO_MODE : get_bool
         };
     

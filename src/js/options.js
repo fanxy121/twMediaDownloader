@@ -15,6 +15,7 @@ $( async function () {
         ,   { key : 'OPEN_MEDIA_LINK_BY_DEFAULT', val : false }
         ,   { key : 'ENABLE_ZIPREQUEST', val : true }
         ,   { key : 'ENABLE_FILTER', val : true }
+        ,   { key : 'ENABLE_VIDEO_DOWNLOAD', val : true }
         ],
         
         INT_KV_LIST = [

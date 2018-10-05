@@ -68,4 +68,10 @@
 ,   "DOWNLOAD_SIZE_LIMIT_MB" : {
         "message" : "Download size limit"
     }
+,   "ENABLE_VIDEO_DOWNLOAD" : {
+        "message" : "Video Download"
+    }
+,   "USER_AUTH_REQUIRED" : {
+        "message" : "User authentication required"
+    }
 }

@@ -373,7 +373,7 @@ var set_values = ( function () {
 
 
 var TemplateTwitterAPI = {
-    version : '0.1.1',
+    version : '0.1.2',
     
     config : {
         api_version : '1.1',
@@ -394,6 +394,7 @@ var TemplateTwitterAPI = {
         use_cache : true,
         auto_reauth : true,
         use_separate_popup_window : true,
+        user_specified_window : null,
         
         popup_closecheck_interval : 100, // milliseconds (0: disabled)
         popup_initial_timeout : 30000, // milliseconds (0: disabled)
@@ -521,7 +522,24 @@ var TemplateTwitterAPI = {
                                 'toolbar=0,scrollbars=1,status=1,resizable=1,location=1,menuBar=0'
                             ].join( ',' ) : null,
                             
-                            popup_window = window.open( initial_popup_url, popup_window_name, popup_window_option ),
+                            popup_window = ( function () {
+                                if ( ! self.config.user_specified_window ) {
+                                    return window.open( initial_popup_url, popup_window_name, popup_window_option );
+                                }
+                                
+                                var popup_window = self.config.user_specified_window;
+                                
+                                try {
+                                    popup_window.name = popup_window_name;
+                                }
+                                catch ( error ) {
+                                    console.error( 'popup window name is not changed: ', error );
+                                }
+                                
+                                popup_window.location.href = initial_popup_url;
+                                
+                                return popup_window;
+                            } )(),
                             
                             initial_timeout_timer_id = ( self.config.popup_initial_timeout && self.config.popup_healthcheck_interval ) ? setTimeout( function () {
                                 console.error( new Date().toISOString(), 'connection timeout' );

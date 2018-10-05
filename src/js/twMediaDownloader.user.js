@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.1.30
+// @version         0.1.1.31
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -94,16 +94,15 @@ var OPTIONS = {
 ,   VIDEO_DOWNLOAD_LINK : true // true: 個別ツイートに動画ダウンロードボタンを追加
 ,   OPEN_MEDIA_LINK_BY_DEFAULT : false // true: デフォルトでメディアリンクを開く（[Alt]＋Click時にダウンロード）
 ,   ENABLE_FILTER : true // true: 検索タイムライン使用時に filter: をかける
-    // TODO: 検索タイムライン使用時、filter: をかけない場合にヒットする画像や動画が、filter: をかけるとヒットしないことがある
+    // ※検索タイムライン使用時、filter: をかけない場合にヒットする画像や動画が、filter: をかけるとヒットしないことがある
+,   DOWNLOAD_SIZE_LIMIT_MB : 500 // ダウンロード時のサイズ制限(MB)
+,   ENABLE_VIDEO_DOWNLOAD : true // true: 動画ダウンロードを有効にする（ユーザー認証が必要）
     
 ,   OPERATION : true // true: 動作中、false: 停止中
 
-,   CACHE_OAUTH2_ACCESS_TOKEN : true // true: OAuth2 の Access Token を再利用する
 ,   QUICK_LOAD_GIF : true // true: アニメーションGIF（から変換された動画）の情報(URL)取得を簡略化
 
-,   DOWNLOAD_SIZE_LIMIT_MB : 500 // ダウンロード時のサイズ制限(MB)
-
-,   DEFAULT_LIMIT_TWEET_NUMBER : 100 // ダウンロードできる画像付きツイート数制限のデフォルト値
+,   DEFAULT_LIMIT_TWEET_NUMBER : 1000 // ダウンロードできる画像付きツイート数制限のデフォルト値
 ,   DEFAULT_SUPPORT_IMAGE : true // true: 画像をダウンロード対象にする
 ,   DEFAULT_SUPPORT_GIF : true // true: アニメーションGIF（から変換された動画）をダウンロード対象にする
 ,   DEFAULT_SUPPORT_VIDEO : true // true: 動画をダウンロード対象にする
@@ -120,7 +119,10 @@ var OPTIONS = {
     // Twitter API には Rate Limit があるため、続けてコールする際に待ち時間を挟む
     // /statuses/show.json の場合、15分で900回（正確に 900回／15分というわけではなく、15分毎にリセットされる）→1秒以上は空けておく
     // TODO: 別のタブで並列して実行されている場合や、別ブラウザでの実行は考慮していない
-,   TWITTER_OAUTH_POPUP : false // true: OAuth 認証時、ポップアップウィンドウを使用(ブラウザのポップアップブロックに妨げられる恐れあり)
+,   TWITTER_OAUTH_POPUP : true // true: OAuth 認証時、ポップアップウィンドウを使用 / false: 同、別タブを使用
+
+,   USE_APPLICATION_AUTH : false // true: Twitter のユーザー認証(OAuth)失敗時、アプリケーション認証(OAuth2)を使用
+,   CACHE_OAUTH2_ACCESS_TOKEN : true // true: OAuth2 の Access Token を再利用する(USE_APPLICATION_AUTH時のみ有効)
 };
 
 // }
@@ -882,6 +884,11 @@ function is_night_mode() {
 } // end of is_night_mode()
 
 
+function twitter_api_is_enabled() {
+    return ( twitter_api || oauth2_access_token );
+} // end of twitter_api_is_enabled()
+
+
 function get_access_token( callback ) {
     var access_token = null;
     
@@ -919,6 +926,11 @@ function get_access_token( callback ) {
 
 function update_oauth2_access_token( callback ) {
     oauth2_access_token = null;
+    
+    if ( ! OPTIONS.USE_APPLICATION_AUTH ) {
+        callback( null );
+        return;
+    }
     
     var storage_name = SCRIPT_NAME + '_' + 'oauth2_access_token',
         update = function ( access_token ) {
@@ -988,21 +1000,52 @@ function initialize_twitter_api() {
         },
         logined_screen_name = get_logined_screen_name();
     
-    if ( twitter_api || oauth2_access_token ) {
+    if ( twitter_api_is_enabled() || ( ! OPTIONS.ENABLE_VIDEO_DOWNLOAD ) ) {
         finish();
         return jq_deferred.promise();
     }
     
     if ( typeof Twitter != 'undefined' ) {
+        var popup_window_width = Math.floor( window.outerWidth * 0.8 ),
+            popup_window_height = Math.floor( window.outerHeight * 0.5 ),
+            popup_window_top = 0,
+            popup_window_left = 0,
+            popup_window_option = ( function () {
+                if ( ! OPTIONS.TWITTER_OAUTH_POPUP ) {
+                    return null;
+                }
+                if ( popup_window_width < 1000 ) {
+                    popup_window_width = 1000;
+                }
+                
+                if ( popup_window_height < 700 ) {
+                    popup_window_height = 700;
+                }
+                
+                popup_window_top = Math.floor( window.screenY + ( window.outerHeight - popup_window_height ) / 8 );
+                popup_window_left = Math.floor( window.screenX + ( window.outerWidth - popup_window_width ) / 2 );
+                
+                return [
+                    'width=' + popup_window_width,
+                    'height=' + popup_window_height,
+                    'top=' + popup_window_top,
+                    'left=' + popup_window_left,
+                    'toolbar=0,scrollbars=1,status=1,resizable=1,location=1,menuBar=0'
+                ];
+            } )(),
+            user_specified_window = window.open( 'https://twitter.com/', null, popup_window_option );
+            // 非同期にウィンドウを開くと、ポップアップブロックが働いてしまうため、ユーザーアクションの直後に予めウィンドウを開いておく
+            // ※ 第一引数(URL) を 'about:blank' にすると、Firefox では window.name が変更できない（『DOMException: "Permission denied to access property "name" on cross-origin object"』発生）
+        
         Twitter.initialize( {
             consumer_key : OAUTH_CONSUMER_KEY,
             consumer_secret : OAUTH_CONSUMER_SECRET,
             callback_url : OAUTH_CALLBACK_URL,
             screen_name : logined_screen_name,
             popup_window_name : OAUTH_POPUP_WINDOW_NAME,
-            use_cache : true,
-            auto_reauth : true,
-            use_separate_popup_window : OPTIONS.TWITTER_OAUTH_POPUP
+            use_cache : false,
+            auto_reauth : false,
+            user_specified_window : user_specified_window
         } )
         .authenticate()
         .done( function ( api ) {
@@ -1024,6 +1067,7 @@ function initialize_twitter_api() {
             .fail( function ( error ) {
                 log_error( 'api( "account/verify_credentials" ) failure', error );
                 
+                twitter_api = null;
                 update_oauth2_access_token( function ( access_token ) {
                     finish();
                 } );
@@ -1033,12 +1077,14 @@ function initialize_twitter_api() {
             log_error( 'Twitter.authenticate() failure', error );
             
             if ( ( ! /refused/i.test( error ) ) && confirm( 'Authorization failed. Retry ?' ) ) {
-                initialize_twitter_api().then( function () {
+                initialize_twitter_api()
+                .then( function () {
                     finish();
                 } );
                 return;
             }
             
+            twitter_api = null;
             update_oauth2_access_token( function ( access_token ) {
                 finish();
             } );
@@ -1047,6 +1093,7 @@ function initialize_twitter_api() {
         return jq_deferred.promise();
     }
     
+    twitter_api = null;
     update_oauth2_access_token( function ( access_token ) {
         finish();
     } );
@@ -1842,7 +1889,7 @@ var download_media_timeline = ( function () {
                 if ( 0 < image_urls.length ) {
                     tweet_info.media_type = 'image';
                 }
-                else if ( true || twitter_api || oauth2_access_token ) {
+                else if ( true || twitter_api_is_enabled() ) {
                     jq_tweet.find( '.AdaptiveMedia-videoContainer .PlayableMedia' ).each( function () {
                         var jq_playable_media = $( this );
                         
@@ -2062,7 +2109,7 @@ var download_media_timeline = ( function () {
                         
                         jq_button_start.blur();
                         
-                        if ( jq_checkbox_container.find( 'input[type=checkbox][name!="include_retweets"]:checked' ).length <= 0 ) {
+                        if ( jq_checkbox_container.find( 'input[type=checkbox][name!="include_retweets"]:enabled:checked' ).length <= 0 ) {
                             alert( OPTIONS.CHECKBOX_ALERT );
                             return;
                         }
@@ -2440,7 +2487,7 @@ var download_media_timeline = ( function () {
                 
                 jq_toolbox.append( jq_range_container );
                 
-                if ( true || twitter_api || oauth2_access_token ) {
+                if ( true || twitter_api_is_enabled() ) {
                     jq_toolbox.append( jq_checkbox_container );
                 }
                 
@@ -2587,6 +2634,13 @@ var download_media_timeline = ( function () {
                 self.jq_button_close.prop( 'disabled', false );
                 self.jq_button_container.find( 'input[type=checkbox]' ).prop( 'disabled', false );
                 self.jq_checkbox_container.find( 'input[type=checkbox]' ).prop( 'disabled', false );
+                
+                if ( OPTIONS.ENABLE_VIDEO_DOWNLOAD && twitter_api_is_enabled() ) {
+                    self.jq_checkbox_video.css( 'color', '' ).find( 'input' ).prop( 'disabled', false );
+                }
+                else {
+                    self.jq_checkbox_video.css( 'color', 'gray' ).find( 'input' ).prop( 'disabled', true );
+                }
                 
                 if ( self.is_for_likes_timeline || self.is_for_notifications_timeline || judge_search_timeline() ) {
                     self.jq_checkbox_include_retweets.hide();
@@ -2749,7 +2803,7 @@ var download_media_timeline = ( function () {
                     filter_info = {
                         image : support_image
                     ,   gif : support_gif
-                    ,   video : support_video
+                    ,   video : support_video && OPTIONS.ENABLE_VIDEO_DOWNLOAD && twitter_api_is_enabled()
                     ,   nomedia : support_nomedia
                     ,   include_retweets : ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) ? false : include_retweets
                     ,   dry_run : dry_run
@@ -4274,6 +4328,13 @@ function add_media_button_to_tweet( jq_tweet ) {
         if ( ! OPTIONS.VIDEO_DOWNLOAD_LINK ) {
             return;
         }
+        
+        if ( ! OPTIONS.ENABLE_VIDEO_DOWNLOAD ) {
+            if ( ( ! jq_playable_media.hasClass( 'PlayableMedia--gif' ) ) || ( ! OPTIONS.QUICK_LOAD_GIF ) ) {
+                return;
+            }
+        }
+        
         jq_media_button.text( OPTIONS.VIDEO_DOWNLOAD_LINK_TEXT );
         
         if ( jq_playable_media.hasClass( 'PlayableMedia--gif' ) || jq_playable_media.hasClass( 'PlayableMedia--vine' ) ) {
@@ -4674,7 +4735,33 @@ function initialize( user_options ) {
     
     
     initialize_global_variables( function ( name_value_map ) {
-        start_main( name_value_map );
+        if ( typeof Twitter != 'undefined' ) {
+            Twitter.initialize( {
+                consumer_key : OAUTH_CONSUMER_KEY,
+                consumer_secret : OAUTH_CONSUMER_SECRET,
+                screen_name : get_logined_screen_name(),
+                use_cache : true,
+                auto_reauth : false,
+            } )
+            .isAuthenticated()
+            .done( function ( api, result ) {
+                    twitter_api = api;
+                    
+                    var current_user = Twitter.getCurrentUser();
+                    
+                    log_info( 'User authentication (OAuth 1.0a) is enabled. (screen_name:' + current_user.screen_name + ', user_id:' + current_user.user_id + ')' );
+                
+            } )
+            .fail( function ( result ) {
+                log_info( 'Invalid cached token (' + result + ')' );
+            } )
+            .always( function () {
+                start_main( name_value_map );
+            } );
+        }
+        else {
+            start_main( name_value_map );
+        }
     } );
 
 } // end of initialize()
