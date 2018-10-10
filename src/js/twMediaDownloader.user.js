@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.1.31
+// @version         0.1.1.32
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -1033,62 +1033,83 @@ function initialize_twitter_api() {
                     'toolbar=0,scrollbars=1,status=1,resizable=1,location=1,menuBar=0'
                 ];
             } )(),
-            user_specified_window = window.open( 'https://twitter.com/', null, popup_window_option );
+            user_specified_window = window.open( 'https://twitter.com/', null, popup_window_option ),
             // 非同期にウィンドウを開くと、ポップアップブロックが働いてしまうため、ユーザーアクションの直後に予めウィンドウを開いておく
             // ※ 第一引数(URL) を 'about:blank' にすると、Firefox では window.name が変更できない（『DOMException: "Permission denied to access property "name" on cross-origin object"』発生）
+            
+            wait_window_ready = function ( callback ) {
+                try {
+                    user_specified_window.name = 'test';
+                    
+                    log_debug( 'wait_window_ready(): OK' );
+                    
+                    callback();
+                }
+                catch ( error ) {
+                    log_debug( 'wait_window_ready(): ', error );
+                    
+                    // Firefox の場合、開いた直後には window.name が変更できない場合がある→変更可能になるまで待つ
+                    setTimeout( function () {
+                        wait_window_ready( callback );
+                    }, 100 );
+                }
+            };
         
-        Twitter.initialize( {
-            consumer_key : OAUTH_CONSUMER_KEY,
-            consumer_secret : OAUTH_CONSUMER_SECRET,
-            callback_url : OAUTH_CALLBACK_URL,
-            screen_name : logined_screen_name,
-            popup_window_name : OAUTH_POPUP_WINDOW_NAME,
-            use_cache : false,
-            auto_reauth : false,
-            user_specified_window : user_specified_window
-        } )
-        .authenticate()
-        .done( function ( api ) {
-            api( 'account/verify_credentials', 'GET' )
-            .done( function( result ) {
-                //set_values( {
-                //    oauth_token : api.oauth_token,
-                //    oauth_token_secret : api.oauth_token_secret
-                //} );
-                
-                twitter_api = api;
-                
-                var current_user = Twitter.getCurrentUser();
-                
-                log_info( 'User authentication (OAuth 1.0a) is enabled. (screen_name:' + current_user.screen_name + ', user_id:' + current_user.user_id + ')' );
-                
-                finish();
+        
+        wait_window_ready( function () {
+            Twitter.initialize( {
+                consumer_key : OAUTH_CONSUMER_KEY,
+                consumer_secret : OAUTH_CONSUMER_SECRET,
+                callback_url : OAUTH_CALLBACK_URL,
+                screen_name : logined_screen_name,
+                popup_window_name : OAUTH_POPUP_WINDOW_NAME,
+                use_cache : false,
+                auto_reauth : false,
+                user_specified_window : user_specified_window
             } )
-            .fail( function ( error ) {
-                log_error( 'api( "account/verify_credentials" ) failure', error );
+            .authenticate()
+            .done( function ( api ) {
+                api( 'account/verify_credentials', 'GET' )
+                .done( function( result ) {
+                    //set_values( {
+                    //    oauth_token : api.oauth_token,
+                    //    oauth_token_secret : api.oauth_token_secret
+                    //} );
+                    
+                    twitter_api = api;
+                    
+                    var current_user = Twitter.getCurrentUser();
+                    
+                    log_info( 'User authentication (OAuth 1.0a) is enabled. (screen_name:' + current_user.screen_name + ', user_id:' + current_user.user_id + ')' );
+                    
+                    finish();
+                } )
+                .fail( function ( error ) {
+                    log_error( 'api( "account/verify_credentials" ) failure', error );
+                    
+                    twitter_api = null;
+                    update_oauth2_access_token( function ( access_token ) {
+                        finish();
+                    } );
+                } );
+            } )
+            .fail( function( error ){
+                log_error( 'Twitter.authenticate() failure', error );
+                
+                if ( ( ! /refused/i.test( error ) ) && confirm( 'Authorization failed. Retry ?' ) ) {
+                    initialize_twitter_api()
+                    .then( function () {
+                        finish();
+                    } );
+                    return;
+                }
                 
                 twitter_api = null;
                 update_oauth2_access_token( function ( access_token ) {
                     finish();
                 } );
-            } );
-        } )
-        .fail( function( error ){
-            log_error( 'Twitter.authenticate() failure', error );
-            
-            if ( ( ! /refused/i.test( error ) ) && confirm( 'Authorization failed. Retry ?' ) ) {
-                initialize_twitter_api()
-                .then( function () {
-                    finish();
-                } );
-                return;
-            }
-            
-            twitter_api = null;
-            update_oauth2_access_token( function ( access_token ) {
-                finish();
-            } );
-        });
+            });
+        } );
         
         return jq_deferred.promise();
     }
