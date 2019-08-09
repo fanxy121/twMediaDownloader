@@ -5,7 +5,8 @@
 w.chrome = ( ( typeof browser != 'undefined' ) && browser.runtime ) ? browser : chrome;
 
 
-var DEBUG = false;
+//var DEBUG = false;
+var DEBUG = true;
 
 
 function log_debug() {
@@ -14,6 +15,8 @@ function log_debug() {
     }
     console.log.apply( console, arguments );
 } // end of log_debug()
+
+w.log_debug = log_debug;
 
 
 function get_values( name_list ) {
@@ -29,6 +32,22 @@ function get_values( name_list ) {
     } );
     
 } // end of get_values()
+
+
+function reload_tabs() {
+    chrome.tabs.query( {
+        url : '*://*.twitter.com/*'
+    }, function ( result ) {
+        result.forEach( function ( tab ) {
+            if ( ! tab.url.match( /^https?:\/\/(?:(?:mobile)\.)?twitter\.com\// ) ) {
+                return;
+            }
+            chrome.tabs.reload( tab.id );
+        } );
+    });
+} // end of reload_tabs()
+
+w.reload_tabs = reload_tabs;
 
 
 function on_message( message, sender, sendResponse ) {
@@ -61,6 +80,10 @@ function on_message( message, sender, sendResponse ) {
                     sendResponse( response );
                 } );
             
+            return true;
+        
+        case 'RELOAD_TABS':
+            reload_tabs();
             return true;
         
         default:
@@ -104,16 +127,37 @@ chrome.runtime.onMessage.addListener( on_message );
 //);
 
 
-// ※ OAuth2 の token 取得時に Cookie を送信しないようにする
+var reg_oauth2_token = /^https:\/\/api\.twitter\.com\/oauth2\/token/,
+    reg_legacy_mark = /[?&]__tmdl=legacy(?:&|$)/;
+
 chrome.webRequest.onBeforeSendHeaders.addListener(
     function ( details ) {
-        var requestHeaders = details.requestHeaders.filter( function ( element, index, array ) {
+        var requestHeaders,
+            url = details.url;
+        
+        if ( reg_oauth2_token.test( url ) ) {
+            // ※ OAuth2 の token 取得時(api.twitter.com/oauth2/token)に Cookie を送信しないようにする
+            requestHeaders = details.requestHeaders.filter( function ( element, index, array ) {
                 return ( element.name.toLowerCase() != 'cookie' );
             } );
+        }
+        else if ( reg_legacy_mark.test( url ) ) {
+            // ※ "__tmdl=legacy" が付いている場合、旧 Twitter の HTML / API をコールするために User-Agent を変更
+            requestHeaders = details.requestHeaders.map( function ( element ) {
+                if ( element.name.toLowerCase() == 'user-agent' ) {
+                    //element.value = 'Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko';
+                    element.value = 'Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; AS; rv:11.0) Waterfox/56.2';
+                    // 参考：[ZusorCode/GoodTwitter](https://github.com/ZusorCode/GoodTwitter)
+                }
+                return element;
+            } );
+        }
         
-        return { requestHeaders: requestHeaders };
+        console.log( requestHeaders );
+        
+        return ( ( requestHeaders !== undefined ) ? { requestHeaders : requestHeaders } : {} );
     }
-,   { urls : [ '*://api.twitter.com/oauth2/token' ] }
+,   { urls : [ '*://*.twitter.com/*' ] }
 ,   [ 'blocking', 'requestHeaders' ]
 );
 

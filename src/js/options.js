@@ -5,7 +5,35 @@
 w.chrome = ( ( typeof browser != 'undefined' ) && browser.runtime ) ? browser : chrome;
 
 
-var IS_EDGE = ( 0 <= w.navigator.userAgent.toLowerCase().indexOf( 'edge' ) );
+var USER_AGENT = w.navigator.userAgent.toLowerCase(),
+    IS_EDGE = ( 0 <= USER_AGENT.indexOf( 'edge' ) ),
+    IS_FIREFOX = ( 0 <= USER_AGENT.indexOf( 'firefox' ) ),
+    IS_VIVALDI = ( 0 <= USER_AGENT.indexOf( 'vivaldi' ) ),
+    
+    value_updated = false,
+    background_window = chrome.extension.getBackgroundPage();
+
+background_window.log_debug( '***** options ******' );
+
+
+$( w ).on( ( IS_VIVALDI ) ? 'blur' : 'unload', function ( event ) {
+    // ※ Vivaldi 2.5.1525.48 では、popup を閉じても unload イベントは発生せず、次に popup を開いたときに発生してしまう
+    //    → 暫定的に blur イベントで対処
+    
+    background_window.log_debug( '< unloaded > value_updated:', value_updated );
+    
+    if ( ! value_updated ) {
+        return;
+    }
+    
+    value_updated = false;
+    
+    background_window.reload_tabs();
+    // オプションを変更した場合にタブをリロード
+    // ※TODO: 一度でも変更すると、値が同じであってもリロードされる
+    
+    background_window.log_debug( '< reload_tabs() done >' );
+} );
 
 
 $( async function () {
@@ -39,6 +67,8 @@ $( async function () {
                 STR_KV_LIST.forEach( function( str_kv ) {
                     option_keys.push( str_kv.key );
                 } );
+                
+                option_keys.push( 'OPERATION' );
                 
                 return option_keys;
             } )();
@@ -153,6 +183,7 @@ $( async function () {
             var jq_input = $( this );
             
             await set_value( key, check_svalue( kv, jq_input.val() ) );
+            value_updated = true;
         } );
     } // end of set_radio_evt()
     
@@ -185,6 +216,7 @@ $( async function () {
             var svalue = check_svalue( kv, jq_input.val() );
             
             await set_value( key, svalue );
+            value_updated = true;
             
             jq_current.text( svalue );
             jq_input.val( svalue );
@@ -219,6 +251,7 @@ $( async function () {
             var svalue = check_svalue( kv, jq_input.val() );
             
             await set_value( key, svalue );
+            value_updated = true;
             
             jq_current.text( svalue );
             jq_input.val( svalue );
@@ -249,6 +282,7 @@ $( async function () {
         
         jq_operation.unbind( 'click' ).click( async function( event ) {
             await set_operation( ! operation );
+            value_updated = true;
         } );
         
         await set_operation( operation );
@@ -278,6 +312,8 @@ $( async function () {
     
     $( 'input[name="DEFAULT"]' ).click( async function () {
         await remove_values( OPTION_KEY_LIST );
+        value_updated = true;
+        
         await set_all_evt();
         //location.reload();
     } );

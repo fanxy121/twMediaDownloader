@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.1.32
+// @version         0.1.2.1
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -206,13 +206,13 @@ var LANGUAGE = ( function () {
     OAUTH2_TOKEN_API_URL = 'https://api.twitter.com/oauth2/token',
     ENCODED_TOKEN_CREDENTIAL = 'a3l4WDdaTHMyRDNlZnFEYnBLOE1xbnBucjpEODV0WTg5alFvV1dWSDhvTmpJZzI4UEpmSzRTMmxvdXE1TlB4dzhWenZsS0J3U1IweA==',
     
-    OAUTH_IO_PUBLIC_KEY = 'MhAF0rj9tjNp2LCmpXYggBWjCjk',
-    
-    
     API_RATE_LIMIT_STATUS = 'https://api.twitter.com/1.1/application/rate_limit_status.json',
     API_VIDEO_CONFIG_BASE = 'https://api.twitter.com/1.1/videos/tweet/config/#TWEETID#.json',
     API_TWEET_SHOW_BASE = 'https://api.twitter.com/1.1/statuses/show.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_reply_count=1&tweet_mode=extended&trim_user=false&include_ext_media_color=true&id=#TWEETID#',
     GIF_VIDEO_URL_BASE = 'https://video.twimg.com/tweet_video/#VIDEO_ID#.mp4',
+    
+    API2_AUTHORIZATION_BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
+    API2_CONVERSATION_BASE = 'https://api.twitter.com/2/timeline/conversation/#TWEETID#.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_composer_source=true&include_ext_alt_text=true&include_reply_count=1&tweet_mode=extended&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&send_error_codes=true&count=20&ext=mediaStats%2ChighlightedLabel%2CcameraMoment',
     
     twitter_api = null,
     oauth2_access_token = null,
@@ -337,6 +337,12 @@ function log_error() {
 } // end of log_error()
 
 
+var is_react_twitter = ( () => {
+    var is_react = ( 0 < $( 'div#react-root' ).length );
+    return () => is_react;
+} )();
+
+
 var object_extender = ( function () {
     // 参考: [newを封印して、JavaScriptでオブジェクト指向する(1): Architect Note](http://blog.tojiru.net/article/199670885.html?seesaa_related=related_article)
     function object_extender( base_object ) {
@@ -433,7 +439,7 @@ function format_date( date, format, flag_utc ) {
 
 // Twitter のツイートID は 64 ビットで、以下のような構成をとっている
 //   [63:63]( 1) 0(固定)
-//   [62:22](41) timestamp: 現在の Unix Time(ms) から、1288834974657(ms) (2011/11/04 01:42:54 UTC) を引いたもの
+//   [62:22](41) timestamp: 現在の Unix Time(ms) から、1288834974657(ms) (2010/11/04 01:42:54 UTC) を引いたもの
 //   [21:12](10) machine id: 生成器に割り当てられたID。datacenter id + worker id
 //   [11: 0](12) 生成器ごとに採番するsequence番号
 //
@@ -613,7 +619,7 @@ function get_video_extension( video_url ) {
 function get_gif_video_url_from_playable_media( jq_target ) {
     // 動画GIFの背景画像 URL から MP4 の URL を割り出す
     // background-image:url('https://pbs.twimg.com/tweet_video_thumb/#VIDEO_ID#.jpg') => https://video.twimg.com/tweet_video/#VIDEO_ID#.mp4
-    return GIF_VIDEO_URL_BASE.replace( '#VIDEO_ID#', jq_target.find( '.PlayableMedia-player' ).attr( 'style' ).match( /tweet_video_thumb\/([^.]+)\./ )[ 1 ] );
+    return GIF_VIDEO_URL_BASE.replace( '#VIDEO_ID#', jq_target.find( '.PlayableMedia-player' ).attr( 'style' ).match( /tweet_video_thumb\/([^.?]+)[.?]/ )[ 1 ] );
 } // end of get_gif_video_url_from_playable_media()
 
 
@@ -641,6 +647,9 @@ function get_screen_name( url ) {
     switch ( screen_name ) {
         case 'search' :
         case 'mentions' :
+        case 'i' :
+        case 'notifications' :
+        case 'messages' :
             return null;
     }
     
@@ -688,7 +697,13 @@ function judge_notifications_timeline( url ) {
     if ( ! url ) {
         url = w.location.href;
     }
-    return /^\/(?:i\/notifications|mentions)/.test( new URL( url ).pathname );
+    
+    if ( is_react_twitter() ) {
+        return /^\/(?:notifications)(?:\/mentions|$)/.test( new URL( url ).pathname );
+    }
+    else {
+        return /^\/(?:i\/notifications|mentions)$/.test( new URL( url ).pathname );
+    }
 } // end of judge_notifications_timeline()
 
 
@@ -878,14 +893,31 @@ var get_values = ( function () {
 } )(); // end of get_values()
 
 
-
 function is_night_mode() {
-    return $( '#user-dropdown .js-nightmode-icon' ).hasClass( 'Icon--crescentFilled' );
+    if ( is_react_twitter() ) {
+        return ( getComputedStyle( d.body ).backgroundColor != 'rgb(255, 255, 255)' );
+    }
+    else {
+        return $( '#user-dropdown .js-nightmode-icon' ).hasClasses( [ 'Icon--lightBulbOff', 'Icon--crescentFilled' ], true );
+    }
 } // end of is_night_mode()
 
 
+function get_api2_csrf_token() {
+    var csrf_token;
+    
+    try {
+        csrf_token = document.cookie.match( /ct0=(.*?)(?:;|$)/ )[ 1 ];
+    }
+    catch ( error ) {
+    }
+    
+    return csrf_token;
+} // end of get_api2_csrf_token()
+
+
 function twitter_api_is_enabled() {
-    return ( twitter_api || oauth2_access_token );
+    return ( twitter_api || oauth2_access_token || get_api2_csrf_token() );
 } // end of twitter_api_is_enabled()
 
 
@@ -1149,7 +1181,57 @@ function twitter_api_get_json( api_url, options ) {
     }
     
     return twitter_api_delay().then( function () {
-        if ( twitter_api ) {
+        var csrf_token = get_api2_csrf_token(),
+            tweet_id = ( function () {
+                var tweet_id;
+                
+                try {
+                    tweet_id = ( api_url.match( /\/(\d+)\.json/ ) || api_url.match( /&id=(\d+)/ ) )[ 1 ];
+                }
+                catch ( error ) {
+                }
+                
+                return tweet_id;
+            } )();
+        
+        if ( csrf_token && tweet_id ) {
+            return ( function () {
+                var jq_deferred = new $.Deferred(),
+                    api2_url = API2_CONVERSATION_BASE.replace( '#TWEETID#', tweet_id );
+                
+                $.ajax( {
+                    type : 'GET'
+                ,   url : api2_url
+                ,   headers : {
+                        'Authorization' : 'Bearer ' + API2_AUTHORIZATION_BEARER
+                    ,   'x-csrf-token' : csrf_token
+                    ,   'x-twitter-active-user' : 'yes'
+                    ,   'x-twitter-auth-type' : 'OAuth2Session'
+                    ,   'x-twitter-client-language' : LANGUAGE
+                    }
+                ,   dataType : 'json'
+                ,   xhrFields : {
+                        withCredentials : true
+                    }
+                } )
+                .done( function ( json, textStatus, jqXHR ) {
+                    log_debug( 'twitter_api_get_json() tweet_id:', tweet_id, 'json:', json );
+                    try {
+                        jq_deferred.resolve( json.globalObjects.tweets[ tweet_id ] );
+                    }
+                    catch ( error ) {
+                        jq_deferred.reject( jqXHR, error );
+                    }
+                } )
+                .fail( function ( jqXHR, textStatus, errorThrown ) {
+                    log_error( api2_url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
+                    jq_deferred.reject( jqXHR, textStatus, errorThrown );
+                } );
+                
+                return jq_deferred.promise();
+            } )();
+        }
+        else if ( twitter_api ) {
             var parameters = {};
             
             if ( options.auto_reauth ) {
@@ -1391,6 +1473,13 @@ var download_media_timeline = ( function () {
                             self.search_timeline_parameters.api_endpoint.data[ name ] = value;
                         }
                     } );
+                }
+                
+                if ( is_react_twitter() ) {
+                    // User-Agent 変更用マークを付ける(URLクエリに "_tmdl=legacy" 追加)
+                    self.media_timeline_parameters.api_endpoint.data.__tmdl = 'legacy';
+                    self.search_timeline_parameters.html_endpoint.data.__tmdl = 'legacy';
+                    self.search_timeline_parameters.api_endpoint.data.__tmdl = 'legacy';
                 }
                 
                 return self;
@@ -3961,40 +4050,135 @@ var check_timeline_headers = ( function () {
 
 
 function add_media_button_to_tweet( jq_tweet ) {
-    var tweet_id = jq_tweet.attr( 'data-tweet-id' ),
-        jq_action_list = jq_tweet.find( '.ProfileTweet-actionList, footer' ),
-        jq_images = jq_tweet.find( '.AdaptiveMedia-photoContainer img' ),
-        jq_playable_media = jq_tweet.find( '.PlayableMedia' ),
-        media_button_class_name = SCRIPT_NAME + '_media_button',
-        tooltip_title = ( OPTIONS.OPEN_MEDIA_LINK_BY_DEFAULT ) ? OPTIONS.OPEN_MEDIA_LINK : OPTIONS.DOWNLOAD_MEDIA_TITLE,
+    var media_button_class_name = SCRIPT_NAME + '_media_button',
+        tweet_id,
+        jq_action_list,
+        jq_images,
+        jq_playable_media,
+        jq_tweet_profile_link,
+        media_number = 0;
+    
+    if ( is_react_twitter() ) {
+        var tweet_url = jq_tweet.find( 'a[role="link"][href^="/"][href*="/status/"]:has(time)' ).attr( 'href' ),
+            screen_name,
+            timestamp_ms,
+            jq_tweet_time = jq_tweet.find( 'a[role="link"] time[datetime]' );
+            
+        jq_tweet_profile_link = $( '<a class="js-user-profile-link js-action-profile" />' )
+            .addClass( SCRIPT_NAME + '_tweet_profile' )
+            .css( 'display', 'none' );
+        
+        //tweet_id = ( tweet_url ) ? tweet_url.match( /\/status(?:es)?\/(\d+)/ )[ 1 ] : get_tweet_id( location.href );
+        
+        if ( ! tweet_url ) {
+            tweet_url = new URL( location.href ).pathname;
+        }
+        
+        if ( tweet_url.match( /^\/([^\/]+)\/status(?:es)?\/(\d+)/ ) ) {
+            screen_name = RegExp.$1;
+            tweet_id = RegExp.$2;
+        }
+        else {
+            screen_name = '_unknown_';
+            tweet_id = 0;
+        }
+        
+        if ( 0 < jq_tweet_time.length ) {
+            timestamp_ms = new Date( jq_tweet_time.attr( 'datetime' ) ).getTime();
+        }
+        else {
+            try {
+                timestamp_ms = tweet_id_to_date( tweet_id ).getTime();
+            }
+            catch ( error ) {
+                timestamp_ms = new Date().getTime();
+            }
+        }
+        
+        jq_tweet_profile_link
+            .attr( 'href', '/' + screen_name )
+            .attr( 'data-time-ms', timestamp_ms );
+        
+        jq_action_list = jq_tweet.find( 'div[dir="auto"]:has(>a[role="link"][href*="/help.twitter.com/"])' );
+        if ( jq_action_list.length <= 0 ) {
+            jq_action_list = jq_tweet.find( 'div[role="group"]' );
+        }
+        
+        jq_images = jq_tweet.find( 'a[href*="/photo/"] div[aria-label] > img' )
+            .filter( function ( index ) {
+                return ( $( this ).parents( 'div[role="blockquote"]' ).length <= 0 ); // 引用ツイート中画像は対象としない
+            } )
+            .sort( function ( img_a, img_b ) {
+                try {
+                    var num_a = parseInt( $( img_a ).parents( 'a[href]' ).attr( 'href' ).replace( /^.*\/photo\//, '' ), 10 ),
+                        num_b = parseInt( $( img_b ).parents( 'a[href]' ).attr( 'href' ).replace( /^.*\/photo\//, '' ), 10 );
+                    
+                    if ( num_a < num_b ) {
+                        return -1;
+                    }
+                    else if ( num_b < num_a ) {
+                        return 1;
+                    }
+                    return 0;
+                }
+                catch ( error ) {
+                    return 0;
+                }
+            } );
+        
+        jq_playable_media = jq_tweet.find( 'div[data-testid="previewInterstitial"]' ).addClass( 'PlayableMedia' );
+        
+        if ( 0 < jq_playable_media.length ) {
+            var jq_player = jq_playable_media.find( 'div[style*="background-image"]' ).addClass( 'PlayableMedia-player' ),
+                background_image = jq_player.css( 'background-image' );
+            
+            if ( background_image ) {
+                if ( background_image.match( /tweet_video_thumb/ ) ) {
+                    jq_playable_media.addClass( 'PlayableMedia--gif' );
+                }
+                else if ( background_image.match( /(?:_video_thumb\/\d+\/|\/media\/)/ ) ) {
+                    jq_playable_media.addClass( 'PlayableMedia--video' );
+                }
+            }
+            else {
+                jq_playable_media.removeClass( 'PlayableMedia' );
+            }
+        }
+    }
+    else {
+        tweet_id = jq_tweet.attr( 'data-tweet-id' );
+        jq_action_list = jq_tweet.find( '.ProfileTweet-actionList, footer' );
+        jq_images = jq_tweet.find( '.AdaptiveMedia-photoContainer img' );
+    }
+    
+    jq_playable_media = jq_tweet.find( '.PlayableMedia' );
+    
+    media_number = ( 0 < jq_playable_media.length ) ? 1 : jq_images.length;
+    
+    if ( ( ! tweet_id ) || ( media_number <= 0 ) || ( jq_action_list.find( '.' + media_button_class_name ).attr( 'data-media-number' ) == media_number ) ) {
+        return;
+    }
+    
+    var tooltip_title = ( OPTIONS.OPEN_MEDIA_LINK_BY_DEFAULT ) ? OPTIONS.OPEN_MEDIA_LINK : OPTIONS.DOWNLOAD_MEDIA_TITLE,
         tooltip_alt_title = ( OPTIONS.OPEN_MEDIA_LINK_BY_DEFAULT ) ? OPTIONS.DOWNLOAD_MEDIA_TITLE : OPTIONS.OPEN_MEDIA_LINK,
         jq_media_button_container = $( '<div><button/></div>' )
             .addClass( 'ProfileTweet-action ' + media_button_class_name )
             .addClass( 'js-tooltip' )
             //.attr( 'data-original-title', 'Click: ' + tooltip_title + ' / \n[Alt]+Click: ' + tooltip_alt_title )
             .attr( 'title', 'Click: ' + tooltip_title + ' / \n[Alt]+Click: ' + tooltip_alt_title )
+            .attr( 'data-media-number', media_number )
             .css( {
                 'display' : 'none'
             } ),
         jq_media_button = jq_media_button_container.find( 'button:first' )
-            .addClass( 'btn' )
-            .css( {
-                'font-size' : '12px'
-            ,   'font-weight' : 'normal'
-            ,   'padding' : '2px 3px'
-            //,   'color' : 'white'
-            //,   'background' : '#657786'
-            ,   'text-decoration' : 'none'
-            ,   'cursor' : 'pointer'
-            ,   'display' : 'inline-block'
-            } );
-    
-    if ( ( ! tweet_id ) || ( ( jq_images.length <= 0 ) && ( jq_playable_media.length <= 0 ) ) ) {
-        return;
-    }
+            .addClass( 'btn' );
     
     jq_action_list.find( '.' + media_button_class_name ).remove();
     
+    if ( is_react_twitter() ) {
+        jq_tweet.find( '.' + SCRIPT_NAME + '_tweet_profile' ).remove();
+        jq_tweet.append( jq_tweet_profile_link );
+    }
     
     function is_open_image_mode( event ) {
         return ( ( ( ! OPTIONS.OPEN_MEDIA_LINK_BY_DEFAULT ) && ( event.altKey ) ) || ( ( OPTIONS.OPEN_MEDIA_LINK_BY_DEFAULT ) && ( ! event.altKey ) ) );
@@ -4067,7 +4251,6 @@ function add_media_button_to_tweet( jq_tweet ) {
                 media_prefix = 'img',
                 zip = null,
                 zip_request = null;
-            
             
             if ( is_ziprequest_usable() ) {
                 zip_request = new ZipRequest().open();
@@ -4357,7 +4540,7 @@ function add_media_button_to_tweet( jq_tweet ) {
         }
         
         jq_media_button.text( OPTIONS.VIDEO_DOWNLOAD_LINK_TEXT );
-        
+
         if ( jq_playable_media.hasClass( 'PlayableMedia--gif' ) || jq_playable_media.hasClass( 'PlayableMedia--vine' ) ) {
             var media_prefix = jq_playable_media.hasClass( 'PlayableMedia--gif' ) ? 'gif' : 'vid';
             
@@ -4395,7 +4578,14 @@ function add_media_button_to_tweet( jq_tweet ) {
                 .done( function ( json, textStatus, jqXHR ) {
                     jq_media_button.off( 'click' );
                     
-                    var video_url = json.track.playbackUrl;
+                    var video_url;
+                    
+                    if ( is_react_twitter() ) {
+                        video_url = json.extended_entities.media[ 0 ].video_info.variants[ 0 ].url;
+                    }
+                    else {
+                        video_url = json.track.playbackUrl;
+                    }
                     
                     if ( ! is_video_url( video_url ) ) {
                         jq_media_button_container.css( 'display', 'none' );
@@ -4424,7 +4614,6 @@ function add_media_button_to_tweet( jq_tweet ) {
             jq_media_button_container.css( 'display', 'inline-block' );
         }
         else if ( jq_playable_media.hasClass( 'PlayableMedia--video' ) ) {
-        
             jq_media_button.click( function ( event ) {
                 //jq_media_button.off( 'click' );
                 
@@ -4508,24 +4697,53 @@ function check_media_tweets( node ) {
     }
     
     var jq_node = $( node ),
-        tweet_class_names = [ 'js-stream-tweet', 'tweet', 'js-tweet' ],
-        tweet_selector = $.map( tweet_class_names, function ( class_name ) {
-            return 'div.' + class_name;
-        } ).join( ',' ),
-        jq_tweets = jq_node.find( tweet_selector );
+        jq_tweets;
     
-    ( function () {
-        if ( jq_node.hasClasses( tweet_class_names, true ) ) {
-            jq_tweets = jq_tweets.add( jq_node );
-            return;
+    if ( jq_node.hasClasses( [ SCRIPT_NAME + '_media_button', SCRIPT_NAME + '_tweet_profile' ], true ) ) {
+        return false;
+    }
+    
+    if ( is_react_twitter() ) {
+        jq_tweets = jq_node.find( 'article[role="article"]:has(div[data-testid="tweet"]):has(div[aria-label] > img)' );
+        
+        if ( jq_tweets.length <= 0 ) {
+            if ( ( node.tagName == 'ARTICLE' ) && ( jq_node.attr( 'role' ) == 'article' ) && ( 0 < jq_node.find( 'div[data-testid="tweet"]' ).length ) && ( 0 < jq_node.find( 'div[aria-label] > img' ).length ) ) {
+                jq_tweets = jq_tweets.add( jq_node );
+            }
+            else {
+                var jq_tweet = jq_node.parents( 'article[role="article"]:first' );
+                
+                if ( ( 0 < jq_tweet.length ) && ( 0 < jq_tweet.find( 'div[data-testid="tweet"]' ).length ) && ( 0 < jq_tweet.find( 'div[aria-label] > img' ).length ) ) {
+                    jq_tweets = jq_tweets.add( jq_tweet );
+                }
+            }
         }
-        if ( ! jq_node.hasClass( 'js-media-preview-container' ) ) {
-            return;
-        }
-        jq_node.parents( '.js-modal-panel' ).each( function () {
-            jq_tweets = jq_tweets.add( $( this ).find( tweet_selector ) );
+        jq_tweets = jq_tweets.filter( function ( index ) {
+            var jq_tweet = $( this );
+            return ( 0 < jq_tweet.parents( 'div[data-testid="primaryColumn"]' ).length );
         } );
-    } )();
+    }
+    else {
+        var tweet_class_names = [ 'js-stream-tweet', 'tweet', 'js-tweet' ],
+            tweet_selector = $.map( tweet_class_names, function ( class_name ) {
+                return 'div.' + class_name;
+            } ).join( ',' );
+        
+        jq_tweets = jq_node.find( tweet_selector );
+        
+        ( function () {
+            if ( jq_node.hasClasses( tweet_class_names, true ) ) {
+                jq_tweets = jq_tweets.add( jq_node );
+                return;
+            }
+            if ( ! jq_node.hasClass( 'js-media-preview-container' ) ) {
+                return;
+            }
+            jq_node.parents( '.js-modal-panel' ).each( function () {
+                jq_tweets = jq_tweets.add( $( this ).find( tweet_selector ) );
+            } );
+        } )();
+    }
     
     jq_tweets.each( function () {
         var jq_tweet = $( this );
@@ -4550,11 +4768,18 @@ function insert_media_buttons() {
 } // end of insert_media_buttons()
 
 
+function update_display_mode() {
+    $( d.body ).attr( 'data-nightmode', is_night_mode() );
+} // end of update_display_mode()
+
+
 function start_mutation_observer() {
     new MutationObserver( function ( records ) {
+        update_display_mode();
+        
         records.forEach( function ( record ) {
             var target = record.target;
-                            
+            
             to_array( record.addedNodes ).forEach( function ( addedNode ) {
                 if ( addedNode.nodeType != 1 ) {
                     return;
@@ -4698,6 +4923,10 @@ function initialize( user_options ) {
             log_selector = status_container_selector + ' .' + SCRIPT_NAME + '_log',
             log_mask_selector = status_container_selector + ' .' + SCRIPT_NAME + '_log_mask',
             
+            nightmode_selector = 'body[data-nightmode="true"]',
+            media_button_selector = '.' + SCRIPT_NAME + '_media_button button.btn',
+            nightmode_media_button_selector = nightmode_selector + ' ' + media_button_selector,
+            
             css_rule_lines = [
                 '.' + SCRIPT_NAME + '_toolbox label {cursor: pointer;}'
             
@@ -4738,7 +4967,21 @@ function initialize( user_options ) {
             ,   night_mode_dialog_container_selector + ' ' + log_selector + ' .log-item a {text-shadow: none;}'
             ,   night_mode_dialog_container_selector + ' ' + log_selector + ' .log-item a.tweet-link {color: #bc8f8f;}'
             ,   night_mode_dialog_container_selector + ' ' + log_selector + ' .log-item a.media-link {color: #add8e6;}'
+            
+            ,   media_button_selector + ' {font-size: 12px; font-weight: normal; padding: 2px 3px; text-decoration: none; cursor: pointer; display: inline-block;}'
             ];
+        
+        if ( is_react_twitter() ) {
+            var css_rule_lines_react = [
+                    media_button_selector + ' {margin-left: 8px; margin-right: 8px; background-image: linear-gradient(rgb(255, 255, 255), rgb(245, 248, 250)); background-color: rgb(245, 248, 250); color: rgb(102, 117, 127); cursor: pointer; display: inline-block; position: relative; border-width: 1px; border-style: solid; border-color: rgb(230, 236, 240); border-radius: 4px;}'
+                ,   media_button_selector + ':hover {color: rgb(20, 23, 26); background-color: rgb(230, 236, 240); background-image: linear-gradient(rgb(255, 255, 255), rgb(230, 236, 240)); text-decoration: none; border-color: rgb(230, 236, 240);}'
+                
+                ,   nightmode_media_button_selector + ' {background-color: #182430; background-image: none; border: 1px solid #38444d; border-radius: 4px; color: #8899a6; display: inline-block;}'
+                ,   nightmode_media_button_selector + ':hover {color: #fff; text-decoration: none; background-color: #10171e; background-image: none; border-color: #10171e;}'
+                ];
+            
+            css_rule_lines = css_rule_lines.concat( css_rule_lines_react );
+        }
         
         $( 'style.' + SCRIPT_NAME + '-css-rule' ).remove();
         
