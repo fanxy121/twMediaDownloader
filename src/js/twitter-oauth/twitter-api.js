@@ -368,7 +368,13 @@ var set_values = ( function () {
     } )(), // end of object_extender()
     
     get_origin = function ( url ) {
-        return new URL( url ).origin;
+        try {
+            return new URL( url ).origin;
+        }
+        catch ( error ) {
+            console.error( 'get_origin()', url, error );
+            return 'https://api.twitter.com';
+        }
     }; // end of get_origin()
 
 

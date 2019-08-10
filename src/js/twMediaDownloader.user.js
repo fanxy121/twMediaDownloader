@@ -216,6 +216,7 @@ var LANGUAGE = ( function () {
     // TODO: 継続して使えるかどうか不明→変更された場合の対応を要検討
     API2_CONVERSATION_BASE = 'https://api.twitter.com/2/timeline/conversation/#TWEETID#.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_composer_source=true&include_ext_alt_text=true&include_reply_count=1&tweet_mode=extended&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&send_error_codes=true&count=20&ext=mediaStats%2ChighlightedLabel%2CcameraMoment',
     
+    twitter_api_1st_call = true,
     twitter_api = null,
     oauth2_access_token = null,
     limit_tweet_number = OPTIONS.DEFAULT_LIMIT_TWEET_NUMBER,
@@ -936,7 +937,7 @@ function is_night_mode() {
 } // end of is_night_mode()
 
 
-function get_api2_csrf_token() {
+var api2_get_csrf_token = function () {
     var csrf_token;
     
     try {
@@ -946,11 +947,11 @@ function get_api2_csrf_token() {
     }
     
     return csrf_token;
-} // end of get_api2_csrf_token()
+}; // end of api2_get_csrf_token()
 
 
 function twitter_api_is_enabled() {
-    return ( twitter_api || oauth2_access_token || get_api2_csrf_token() );
+    return ( api2_get_csrf_token() || twitter_api || oauth2_access_token );
 } // end of twitter_api_is_enabled()
 
 
@@ -1060,128 +1061,187 @@ function update_oauth2_access_token( callback ) {
 
 function initialize_twitter_api() {
     var jq_deferred = new $.Deferred(),
+        logined_screen_name = get_logined_screen_name(),
+        
+        init_api_main = function () {
+            if ( twitter_api_is_enabled() || ( ! OPTIONS.ENABLE_VIDEO_DOWNLOAD ) ) {
+                finish();
+                return;
+            }
+            
+            if ( typeof Twitter != 'undefined' ) {
+                // OAuth 1.0a 認証処理
+                var popup_window_width = Math.floor( window.outerWidth * 0.8 ),
+                    popup_window_height = Math.floor( window.outerHeight * 0.5 ),
+                    popup_window_top = 0,
+                    popup_window_left = 0,
+                    popup_window_option = ( function () {
+                        if ( ! OPTIONS.TWITTER_OAUTH_POPUP ) {
+                            return null;
+                        }
+                        if ( popup_window_width < 1000 ) {
+                            popup_window_width = 1000;
+                        }
+                        
+                        if ( popup_window_height < 700 ) {
+                            popup_window_height = 700;
+                        }
+                        
+                        popup_window_top = Math.floor( window.screenY + ( window.outerHeight - popup_window_height ) / 8 );
+                        popup_window_left = Math.floor( window.screenX + ( window.outerWidth - popup_window_width ) / 2 );
+                        
+                        return [
+                            'width=' + popup_window_width,
+                            'height=' + popup_window_height,
+                            'top=' + popup_window_top,
+                            'left=' + popup_window_left,
+                            'toolbar=0,scrollbars=1,status=1,resizable=1,location=1,menuBar=0'
+                        ];
+                    } )(),
+                    user_specified_window = window.open( 'https://twitter.com/', null, popup_window_option ),
+                    // 非同期にウィンドウを開くと、ポップアップブロックが働いてしまうため、ユーザーアクションの直後に予めウィンドウを開いておく
+                    // ※ 第一引数(URL) を 'about:blank' にすると、Firefox では window.name が変更できない（『DOMException: "Permission denied to access property "name" on cross-origin object"』発生）
+                    
+                    wait_window_ready = function ( callback ) {
+                        try {
+                            user_specified_window.name = 'test';
+                            
+                            log_debug( 'wait_window_ready(): OK' );
+                            
+                            callback();
+                        }
+                        catch ( error ) {
+                            log_debug( 'wait_window_ready(): ', error );
+                            
+                            // Firefox の場合、開いた直後には window.name が変更できない場合がある→変更可能になるまで待つ
+                            setTimeout( function () {
+                                wait_window_ready( callback );
+                            }, 100 );
+                        }
+                    };
+                
+                
+                wait_window_ready( function () {
+                    Twitter.initialize( {
+                        consumer_key : OAUTH_CONSUMER_KEY,
+                        consumer_secret : OAUTH_CONSUMER_SECRET,
+                        callback_url : OAUTH_CALLBACK_URL,
+                        screen_name : logined_screen_name,
+                        popup_window_name : OAUTH_POPUP_WINDOW_NAME,
+                        use_cache : false,
+                        auto_reauth : false,
+                        user_specified_window : user_specified_window
+                    } )
+                    .authenticate()
+                    .done( function ( api ) {
+                        api( 'account/verify_credentials', 'GET' )
+                        .done( function( result ) {
+                            //set_values( {
+                            //    oauth_token : api.oauth_token,
+                            //    oauth_token_secret : api.oauth_token_secret
+                            //} );
+                            
+                            twitter_api = api;
+                            
+                            var current_user = Twitter.getCurrentUser();
+                            
+                            log_info( 'User authentication (OAuth 1.0a) is enabled. (screen_name:' + current_user.screen_name + ', user_id:' + current_user.user_id + ')' );
+                            
+                            finish();
+                        } )
+                        .fail( function ( error ) {
+                            log_error( 'api( "account/verify_credentials" ) failure', error );
+                            
+                            // OAuth2 用 token 取得処理
+                            twitter_api = null;
+                            update_oauth2_access_token( function ( access_token ) {
+                                finish();
+                            } );
+                        } );
+                    } )
+                    .fail( function( error ){
+                        log_error( 'Twitter.authenticate() failure', error );
+                        
+                        if ( ( ! /refused/i.test( error ) ) && confirm( 'Authorization failed. Retry ?' ) ) {
+                            initialize_twitter_api()
+                            .then( function () {
+                                finish();
+                            } );
+                            return;
+                        }
+                        
+                        // OAuth2 用 token 取得処理
+                        twitter_api = null;
+                        update_oauth2_access_token( function ( access_token ) {
+                            finish();
+                        } );
+                    });
+                } );
+                
+                return;
+            }
+            
+            // OAuth2 用 token 取得処理
+            twitter_api = null;
+            update_oauth2_access_token( function ( access_token ) {
+                finish();
+            } );
+            
+            return;
+        },
+        
         finish = function () {
             jq_deferred.resolve();
-        },
-        logined_screen_name = get_logined_screen_name();
+        };
     
-    if ( twitter_api_is_enabled() || ( ! OPTIONS.ENABLE_VIDEO_DOWNLOAD ) ) {
-        finish();
+    if ( ! twitter_api_1st_call ) {
+        init_api_main();
         return jq_deferred.promise();
     }
     
-    if ( typeof Twitter != 'undefined' ) {
-        var popup_window_width = Math.floor( window.outerWidth * 0.8 ),
-            popup_window_height = Math.floor( window.outerHeight * 0.5 ),
-            popup_window_top = 0,
-            popup_window_left = 0,
-            popup_window_option = ( function () {
-                if ( ! OPTIONS.TWITTER_OAUTH_POPUP ) {
-                    return null;
-                }
-                if ( popup_window_width < 1000 ) {
-                    popup_window_width = 1000;
-                }
-                
-                if ( popup_window_height < 700 ) {
-                    popup_window_height = 700;
-                }
-                
-                popup_window_top = Math.floor( window.screenY + ( window.outerHeight - popup_window_height ) / 8 );
-                popup_window_left = Math.floor( window.screenX + ( window.outerWidth - popup_window_width ) / 2 );
-                
-                return [
-                    'width=' + popup_window_width,
-                    'height=' + popup_window_height,
-                    'top=' + popup_window_top,
-                    'left=' + popup_window_left,
-                    'toolbar=0,scrollbars=1,status=1,resizable=1,location=1,menuBar=0'
-                ];
-            } )(),
-            user_specified_window = window.open( 'https://twitter.com/', null, popup_window_option ),
-            // 非同期にウィンドウを開くと、ポップアップブロックが働いてしまうため、ユーザーアクションの直後に予めウィンドウを開いておく
-            // ※ 第一引数(URL) を 'about:blank' にすると、Firefox では window.name が変更できない（『DOMException: "Permission denied to access property "name" on cross-origin object"』発生）
-            
-            wait_window_ready = function ( callback ) {
-                try {
-                    user_specified_window.name = 'test';
-                    
-                    log_debug( 'wait_window_ready(): OK' );
-                    
-                    callback();
-                }
-                catch ( error ) {
-                    log_debug( 'wait_window_ready(): ', error );
-                    
-                    // Firefox の場合、開いた直後には window.name が変更できない場合がある→変更可能になるまで待つ
-                    setTimeout( function () {
-                        wait_window_ready( callback );
-                    }, 100 );
-                }
-            };
+    twitter_api_1st_call = false;
+    
+    // API2 (api.twitter.com/2/) が有効かどうかをツイート（https://twitter.com/jack/status/20）を読みこんで確認
+    var target_tweet_id = 20;
+    
+    api2_get_tweet_info( target_tweet_id )
+    .done( function ( json, textStatus, jqXHR ) {
+        log_info( 'API2 (api.twitter.com/2/) is available.' );
+        init_api_main();
+    } )
+    .fail( function ( jqXHR, textStatus, errorThrown ) {
+        log_error( 'API2 (api.twitter.com/2/) is not available. (', jqXHR.statusText, ':', textStatus, ')' );
         
+        api2_get_csrf_token = () => false; // API2 無効化
         
-        wait_window_ready( function () {
+        if ( typeof Twitter != 'undefined' ) {
+            // OAuth 1.0a 用のキャッシュされたtokenが有効かを確認
             Twitter.initialize( {
                 consumer_key : OAUTH_CONSUMER_KEY,
                 consumer_secret : OAUTH_CONSUMER_SECRET,
-                callback_url : OAUTH_CALLBACK_URL,
                 screen_name : logined_screen_name,
-                popup_window_name : OAUTH_POPUP_WINDOW_NAME,
-                use_cache : false,
+                use_cache : true,
                 auto_reauth : false,
-                user_specified_window : user_specified_window
             } )
-            .authenticate()
-            .done( function ( api ) {
-                api( 'account/verify_credentials', 'GET' )
-                .done( function( result ) {
-                    //set_values( {
-                    //    oauth_token : api.oauth_token,
-                    //    oauth_token_secret : api.oauth_token_secret
-                    //} );
-                    
+            .isAuthenticated()
+            .done( function ( api, result ) {
                     twitter_api = api;
                     
                     var current_user = Twitter.getCurrentUser();
                     
                     log_info( 'User authentication (OAuth 1.0a) is enabled. (screen_name:' + current_user.screen_name + ', user_id:' + current_user.user_id + ')' );
-                    
-                    finish();
-                } )
-                .fail( function ( error ) {
-                    log_error( 'api( "account/verify_credentials" ) failure', error );
-                    
-                    twitter_api = null;
-                    update_oauth2_access_token( function ( access_token ) {
-                        finish();
-                    } );
-                } );
+                
             } )
-            .fail( function( error ){
-                log_error( 'Twitter.authenticate() failure', error );
-                
-                if ( ( ! /refused/i.test( error ) ) && confirm( 'Authorization failed. Retry ?' ) ) {
-                    initialize_twitter_api()
-                    .then( function () {
-                        finish();
-                    } );
-                    return;
-                }
-                
-                twitter_api = null;
-                update_oauth2_access_token( function ( access_token ) {
-                    finish();
-                } );
-            });
-        } );
-        
-        return jq_deferred.promise();
-    }
-    
-    twitter_api = null;
-    update_oauth2_access_token( function ( access_token ) {
-        finish();
+            .fail( function ( result ) {
+                log_info( 'Invalid cached token (' + result + ')' );
+            } )
+            .always( function () {
+                init_api_main();
+            } );
+        }
+        else {
+            init_api_main();
+        }
     } );
     
     return jq_deferred.promise();
@@ -1208,90 +1268,107 @@ var twitter_api_delay = ( function () {
 } )(); // end of twitter_api_delay()
 
 
+function api2_get_tweet_info( tweet_id ) {
+    var jq_deferred = new $.Deferred(),
+        csrf_token = api2_get_csrf_token(),
+        api2_url = API2_CONVERSATION_BASE.replace( '#TWEETID#', tweet_id );
+    
+    if ( ! csrf_token ) {
+        jq_deferred.reject( {
+            status : 0
+        ,   statusText : 'Illegal condition'
+        }, 'Invalid csrf token' );
+        
+        return jq_deferred.promise();
+    }
+    
+    $.ajax( {
+        type : 'GET'
+    ,   url : api2_url
+    ,   headers : {
+            'Authorization' : 'Bearer ' + API2_AUTHORIZATION_BEARER
+        ,   'x-csrf-token' : csrf_token
+        ,   'x-twitter-active-user' : 'yes'
+        ,   'x-twitter-auth-type' : 'OAuth2Session'
+        ,   'x-twitter-client-language' : LANGUAGE
+        }
+    ,   dataType : 'json'
+    ,   xhrFields : {
+            withCredentials : true
+        }
+    } )
+    .done( function ( json, textStatus, jqXHR ) {
+        log_debug( api2_url, json );
+        try {
+            jq_deferred.resolve( json.globalObjects.tweets[ tweet_id ] );
+        }
+        catch ( error ) {
+            jq_deferred.reject( jqXHR, error );
+        }
+    } )
+    .fail( function ( jqXHR, textStatus, errorThrown ) {
+        log_error( api2_url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
+        jq_deferred.reject( jqXHR, textStatus, errorThrown );
+    } );
+    
+    return jq_deferred.promise();
+} // end of api2_get_tweet_info()
+
+
 function twitter_api_get_json( api_url, options ) {
     if ( ! options ) {
         options = {};
     }
     
-    return twitter_api_delay().then( function () {
-        var csrf_token = get_api2_csrf_token(),
-            tweet_id = ( function () {
-                var tweet_id;
-                
-                try {
-                    tweet_id = ( api_url.match( /\/(\d+)\.json/ ) || api_url.match( /&id=(\d+)/ ) )[ 1 ];
-                }
-                catch ( error ) {
-                }
-                
-                return tweet_id;
-            } )();
-        
-        if ( csrf_token && tweet_id ) {
-            return ( function () {
-                var jq_deferred = new $.Deferred(),
-                    api2_url = API2_CONVERSATION_BASE.replace( '#TWEETID#', tweet_id );
-                
-                $.ajax( {
-                    type : 'GET'
-                ,   url : api2_url
-                ,   headers : {
-                        'Authorization' : 'Bearer ' + API2_AUTHORIZATION_BEARER
-                    ,   'x-csrf-token' : csrf_token
-                    ,   'x-twitter-active-user' : 'yes'
-                    ,   'x-twitter-auth-type' : 'OAuth2Session'
-                    ,   'x-twitter-client-language' : LANGUAGE
-                    }
-                ,   dataType : 'json'
-                ,   xhrFields : {
-                        withCredentials : true
-                    }
-                } )
-                .done( function ( json, textStatus, jqXHR ) {
-                    log_debug( 'twitter_api_get_json() tweet_id:', tweet_id, 'json:', json );
+    return twitter_api_delay()
+        .then( function () {
+            var csrf_token = api2_get_csrf_token(),
+                tweet_id = ( function () {
+                    var tweet_id;
+                    
                     try {
-                        jq_deferred.resolve( json.globalObjects.tweets[ tweet_id ] );
+                        tweet_id = ( api_url.match( /\/(\d+)\.json/ ) || api_url.match( /&id=(\d+)/ ) )[ 1 ];
                     }
                     catch ( error ) {
-                        jq_deferred.reject( jqXHR, error );
                     }
-                } )
-                .fail( function ( jqXHR, textStatus, errorThrown ) {
-                    log_error( api2_url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
-                    jq_deferred.reject( jqXHR, textStatus, errorThrown );
-                } );
-                
-                return jq_deferred.promise();
-            } )();
-        }
-        else if ( twitter_api ) {
-            var parameters = {};
+                    
+                    return tweet_id;
+                } )();
             
-            if ( options.auto_reauth ) {
-                parameters.api_options = {
-                    auto_reauth : options.auto_reauth
-                };
+            if ( csrf_token && tweet_id ) {
+                // API2 使用
+                return api2_get_tweet_info( tweet_id );
             }
-            return twitter_api( api_url, 'GET', parameters );
-        }
-        else if ( oauth2_access_token ) {
-            return $.ajax( {
-                type : 'GET'
-            ,   url : api_url
-            ,   dataType : 'json'
-            ,   headers : {
-                    'Authorization' : 'Bearer ' + oauth2_access_token
+            else if ( twitter_api ) {
+                // API1.1 (OAuth 1.0a ユーザー認証) 使用
+                var parameters = {};
+                
+                if ( options.auto_reauth ) {
+                    parameters.api_options = {
+                        auto_reauth : options.auto_reauth
+                    };
                 }
-            } );
-        }
-        else {
-            return $.ajax( {
-                type : 'GET'
-            ,   url : api_url
-            ,   dataType : 'json'
-            } );
-        }
-    } );
+                return twitter_api( api_url, 'GET', parameters );
+            }
+            else if ( oauth2_access_token ) {
+                // API1.1 (OAuth2 アプリケーション認証) 使用
+                return $.ajax( {
+                    type : 'GET'
+                ,   url : api_url
+                ,   dataType : 'json'
+                ,   headers : {
+                        'Authorization' : 'Bearer ' + oauth2_access_token
+                    }
+                } );
+            }
+            else {
+                return $.ajax( {
+                    type : 'GET'
+                ,   url : api_url
+                ,   dataType : 'json'
+                } );
+            }
+        } );
 } // end of twitter_api_get_json()
 
 
@@ -5207,33 +5284,9 @@ function initialize( user_options ) {
     
     
     initialize_global_variables( function ( name_value_map ) {
-        if ( typeof Twitter != 'undefined' ) {
-            Twitter.initialize( {
-                consumer_key : OAUTH_CONSUMER_KEY,
-                consumer_secret : OAUTH_CONSUMER_SECRET,
-                screen_name : get_logined_screen_name(),
-                use_cache : true,
-                auto_reauth : false,
-            } )
-            .isAuthenticated()
-            .done( function ( api, result ) {
-                    twitter_api = api;
-                    
-                    var current_user = Twitter.getCurrentUser();
-                    
-                    log_info( 'User authentication (OAuth 1.0a) is enabled. (screen_name:' + current_user.screen_name + ', user_id:' + current_user.user_id + ')' );
-                
-            } )
-            .fail( function ( result ) {
-                log_info( 'Invalid cached token (' + result + ')' );
-            } )
-            .always( function () {
-                start_main( name_value_map );
-            } );
-        }
-        else {
-            start_main( name_value_map );
-        }
+        // ※以前はこの時点で Twitter API が有効か否かを確認していたが、React版の場合、この時点では get_logined_screen_name()で screen_name が取得できない（サイドバーが表示されていない）ため、
+        //   最初に initialize_twitter_api() がコールされた時点で確認するように修正
+        start_main( name_value_map );
     } );
 
 } // end of initialize()
