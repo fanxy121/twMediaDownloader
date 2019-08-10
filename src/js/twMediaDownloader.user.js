@@ -1977,51 +1977,77 @@ var download_media_timeline = ( function () {
                 
                 api_data.q = html_data.q; // クエリは最初に設定したもので共通
                 
-                $.ajax( {
-                    type : 'GET'
-                ,   url : html_endpoint.url
-                ,   data : html_data
-                ,   dataType : 'html'
-                } )
-                .done( function ( html ) {
-                    var jq_html_fragment =  get_jq_html_fragment( html ),
-                        tweet_info_list = self.tweet_info_list,
-                        api_max_position = self.search_timeline_parameters.api_max_position = jq_html_fragment.find( '*[data-min-position]' ).attr( 'data-min-position' );
-                        // ※ data-min-position は数値ではなく、"TWEET-(from tweet id)-(to tweet id)-(長い文字列)==-T-0" みたいになっていることに注意
-                    
-                    log_debug( '__get_first_search_timeline() : data-min-position = ', api_max_position );
-                    
-                    if ( ! api_max_position ) {
-                        if ( jq_html_fragment.find( 'div.SearchEmptyTimeline' ).length <= 0 ) {
-                            log_error( '"data-min-position" not found' );
+                var fetch_counter = 0,
+                    fetch_timeline = function () {
+                        $.ajax( {
+                            type : 'GET'
+                        ,   url : html_endpoint.url
+                        ,   data : html_data
+                        ,   dataType : 'html'
+                        } )
+                        .done( function ( html ) {
+                            var jq_html_fragment =  get_jq_html_fragment( html );
+                            
+                            if ( 0 < jq_html_fragment.find( 'div#react-root' ).length ) {
+                                // TODO: React版Twitterで、（UserAgentを置換しているのに）React版HTML が取得される場合がある
+                                //      →暫定処理として、時間を置いて再取得
+                                fetch_counter ++;
+                                log_debug( 'page is for react: ', fetch_counter );
+                                
+                                if ( fetch_counter < 10 ) {
+                                    setTimeout( function () {
+                                        fetch_timeline();
+                                    }, 1000 );
+                                    return;
+                                }
+                                log_error( 'cannot get legacy page (fetch retry over:', fetch_counter, ')' );
+                            }
+                            
+                            var tweet_info_list = self.tweet_info_list,
+                                api_max_position = self.search_timeline_parameters.api_max_position = jq_html_fragment.find( '*[data-min-position]' ).attr( 'data-min-position' );
+                                // ※ data-min-position は数値ではなく、"TWEET-(from tweet id)-(to tweet id)-(長い文字列)==-T-0" みたいになっていることに注意
+                            
+                            log_debug( '__get_first_search_timeline() : data-min-position = ', api_max_position );
+                            
+                            if ( ! api_max_position ) {
+                                if ( jq_html_fragment.find( 'div.SearchEmptyTimeline' ).length <= 0 ) {
+                                    log_error( '"data-min-position" not found' );
+                                    self.timeline_status = 'error';
+                                    callback();
+                                    return;
+                                }
+                                
+                                self.timeline_status = 'end';
+                                callback();
+                                return;
+                            }
+                            
+                            jq_html_fragment.find( '.js-stream-item' ).each( function () {
+                                var jq_stream_item = $( this ),
+                                    tweet_info = self.__get_tweet_info( jq_stream_item );
+                                
+                                if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) ) {
+                                    return;
+                                }
+                                tweet_info.jq_stream_item = jq_stream_item;
+                                tweet_info.timeline_kind = 'search-timeline';
+                                
+                                tweet_info_list.push( tweet_info );
+                            } );
+                            
+                            callback();
+                        } )
+                        .fail( function ( jqXHR, textStatus, errorThrown ) {
+                            log_error( html_endpoint.url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
                             self.timeline_status = 'error';
-                            return;
-                        }
-                        
-                        self.timeline_status = 'end';
-                        return;
-                    }
-                    
-                    jq_html_fragment.find( '.js-stream-item' ).each( function () {
-                        var jq_stream_item = $( this ),
-                            tweet_info = self.__get_tweet_info( jq_stream_item );
-                        
-                        if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) ) {
-                            return;
-                        }
-                        tweet_info.jq_stream_item = jq_stream_item;
-                        tweet_info.timeline_kind = 'search-timeline';
-                        
-                        tweet_info_list.push( tweet_info );
-                    } );
-                } )
-                .fail( function ( jqXHR, textStatus, errorThrown ) {
-                    log_error( html_endpoint.url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
-                    self.timeline_status = 'error';
-                } )
-                .always( function () {
-                    callback();
-                } );
+                            callback();
+                        } )
+                        .always( function () {
+                            //callback();
+                        } );
+                    };
+                
+                fetch_timeline();
                 
                 return self;
             } // end of __get_first_search_timeline()
