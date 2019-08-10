@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.2.1
+// @version         0.1.2.2
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -4363,29 +4363,17 @@ function add_media_button_to_tweet( jq_tweet ) {
             jq_action_list = jq_tweet.find( 'div[role="group"]' );
         }
         
+        // ボタン挿入時には、画像の数が確定していない場合がある→クリック直後に取得
         jq_images = jq_tweet.find( 'a[href*="/photo/"] div[aria-label] > img' )
             .filter( function ( index ) {
                 return ( $( this ).parents( 'div[role="blockquote"]' ).length <= 0 ); // 引用ツイート中画像は対象としない
-            } )
-            .sort( function ( img_a, img_b ) {
-                try {
-                    var num_a = parseInt( $( img_a ).parents( 'a[href]' ).attr( 'href' ).replace( /^.*\/photo\//, '' ), 10 ),
-                        num_b = parseInt( $( img_b ).parents( 'a[href]' ).attr( 'href' ).replace( /^.*\/photo\//, '' ), 10 );
-                    
-                    if ( num_a < num_b ) {
-                        return -1;
-                    }
-                    else if ( num_b < num_a ) {
-                        return 1;
-                    }
-                    return 0;
-                }
-                catch ( error ) {
-                    return 0;
-                }
             } );
         
-        jq_playable_media = jq_tweet.find( 'div[data-testid="previewInterstitial"]' ).addClass( 'PlayableMedia' );
+        jq_playable_media = jq_tweet.find( 'div[data-testid="previewInterstitial"]' )
+            .filter( function ( index ) {
+                return ( $( this ).parents( 'div[role="blockquote"]' ).length <= 0 ); // 引用ツイート中画像は対象としない
+            } )
+            .addClass( 'PlayableMedia' );
         
         if ( 0 < jq_playable_media.length ) {
             var jq_player = jq_playable_media.find( 'div[style*="background-image"]' ).addClass( 'PlayableMedia-player' ),
@@ -4512,6 +4500,37 @@ function add_media_button_to_tweet( jq_tweet ) {
         return function ( event ) {
             event.stopPropagation();
             event.preventDefault();
+            
+            if ( is_react_twitter() ) {
+                // ボタン挿入時には、画像の数が確定していない場合がある→クリック直後に取得
+                jq_images = jq_tweet.find( 'a[href*="/photo/"] div[aria-label] > img' )
+                    .filter( function ( index ) {
+                        return ( $( this ).parents( 'div[role="blockquote"]' ).length <= 0 ); // 引用ツイート中画像は対象としない
+                    } )
+                    .sort( function ( img_a, img_b ) {
+                        try {
+                            var num_a = parseInt( $( img_a ).parents( 'a[href]' ).attr( 'href' ).replace( /^.*\/photo\//, '' ), 10 ),
+                                num_b = parseInt( $( img_b ).parents( 'a[href]' ).attr( 'href' ).replace( /^.*\/photo\//, '' ), 10 );
+                            
+                            if ( num_a < num_b ) {
+                                return -1;
+                            }
+                            else if ( num_b < num_a ) {
+                                return 1;
+                            }
+                            return 0;
+                        }
+                        catch ( error ) {
+                            return 0;
+                        }
+                    } );
+                
+                if ( jq_images.length != media_number ) {
+                    log_debug( 'unmatch media number', media_number, '=>', jq_images.length );
+                    media_number = jq_images.length;
+                    jq_media_button_container.attr( 'data-media-number', media_number );
+                }
+            }
             
             if ( is_open_image_mode( event ) ) {
                 open_images( event );
@@ -4966,7 +4985,6 @@ function add_media_button_to_tweet( jq_tweet ) {
     else {
         jq_action_list.append( jq_media_button_container );
     }
-    
 } // end of add_media_button_to_tweet()
 
 
@@ -4976,35 +4994,41 @@ function check_media_tweets( node ) {
     }
     
     var jq_node = $( node ),
-        jq_tweets;
+        jq_tweets = $();
     
     if ( jq_node.hasClasses( [ SCRIPT_NAME + '_media_button', SCRIPT_NAME + '_tweet_profile' ], true ) ) {
         return false;
     }
     
     if ( is_react_twitter() ) {
-        if ( jq_node.parents( 'div[data-testid="primaryColumn"]' ).length <= 0 ) {
-            return false;
-        }
+        // TODO: React版Twitter にて、追加要素ごとの個別処理にすると、抜けが出る（ボタンが表示されない場合がある）バグあり
+        // → 追加要素毎の処理を止め、まとめてチェック（node: document.body 固定）
+        /*
+        //if ( ( jq_node.attr( 'data-testid' ) != 'primaryColumn' ) && ( jq_node.parents( 'div[data-testid="primaryColumn"]' ).length <= 0 ) ) {
+        //    return false;
+        //}
+        //
+        //jq_tweets = jq_node.find( 'article[role="article"]:has(div[data-testid="tweet"]):has(div[aria-label] > img)' );
+        //
+        //if ( jq_tweets.length <= 0 ) {
+        //    if ( ( node.tagName == 'ARTICLE' ) && ( jq_node.attr( 'role' ) == 'article' ) && ( 0 < jq_node.find( 'div[data-testid="tweet"]' ).length ) && ( 0 < jq_node.find( 'div[aria-label] > img' ).length ) ) {
+        //        jq_tweets = jq_tweets.add( jq_node );
+        //    }
+        //    else {
+        //        var jq_tweet = jq_node.parents( 'article[role="article"]:first' );
+        //        
+        //        if ( ( 0 < jq_tweet.length ) && ( 0 < jq_tweet.find( 'div[data-testid="tweet"]' ).length ) && ( 0 < jq_tweet.find( 'div[aria-label] > img' ).length ) ) {
+        //            jq_tweets = jq_tweets.add( jq_tweet );
+        //        }
+        //    }
+        //}
+        //jq_tweets = jq_tweets.filter( function ( index ) {
+        //    var jq_tweet = $( this );
+        //    return ( 0 < jq_tweet.parents( 'div[data-testid="primaryColumn"]' ).length );
+        //} );
+        */
         
-        jq_tweets = jq_node.find( 'article[role="article"]:has(div[data-testid="tweet"]):has(div[aria-label] > img)' );
-        
-        if ( jq_tweets.length <= 0 ) {
-            if ( ( node.tagName == 'ARTICLE' ) && ( jq_node.attr( 'role' ) == 'article' ) && ( 0 < jq_node.find( 'div[data-testid="tweet"]' ).length ) && ( 0 < jq_node.find( 'div[aria-label] > img' ).length ) ) {
-                jq_tweets = jq_tweets.add( jq_node );
-            }
-            else {
-                var jq_tweet = jq_node.parents( 'article[role="article"]:first' );
-                
-                if ( ( 0 < jq_tweet.length ) && ( 0 < jq_tweet.find( 'div[data-testid="tweet"]' ).length ) && ( 0 < jq_tweet.find( 'div[aria-label] > img' ).length ) ) {
-                    jq_tweets = jq_tweets.add( jq_tweet );
-                }
-            }
-        }
-        jq_tweets = jq_tweets.filter( function ( index ) {
-            var jq_tweet = $( this );
-            return ( 0 < jq_tweet.parents( 'div[data-testid="primaryColumn"]' ).length );
-        } );
+        jq_tweets = jq_node.find( 'div[data-testid="primaryColumn"] article[role="article"]:has(div[data-testid="tweet"]):has(div[aria-label] > img):not(:has(.' + SCRIPT_NAME + '_media_button))' );
     }
     else {
         var tweet_class_names = [ 'js-stream-tweet', 'tweet', 'js-tweet' ],
@@ -5061,7 +5085,14 @@ function start_mutation_observer() {
         update_display_mode();
         
         if ( is_react_twitter() ) {
+            // TODO: React版 Twitter の場合、要素ごとの処理を行うと取りこぼしが出てしまう
+            // → 追加要素毎の処理を止め、まとめてチェック
+            if ( OPTIONS.IMAGE_DOWNLOAD_LINK || OPTIONS.VIDEO_DOWNLOAD_LINK ) {
+                check_media_tweets( d.body );
+            }
+            
             check_timeline_headers( d.body );
+            return;
         }
         
         records.forEach( function ( record ) {
@@ -5076,9 +5107,7 @@ function start_mutation_observer() {
                     check_media_tweets( addedNode );
                 }
                 
-                if ( ! is_react_twitter() ) {
-                    check_timeline_headers( addedNode );
-                }
+                check_timeline_headers( addedNode );
             } );
         } );
     } ).observe( d.body, { childList : true, subtree : true } );
@@ -5310,7 +5339,7 @@ function initialize( user_options ) {
     
     
     initialize_global_variables( function ( name_value_map ) {
-        // ※以前はこの時点で Twitter API が有効か否かを確認していたが、React版の場合、この時点では get_logined_screen_name()で screen_name が取得できない（サイドバーが表示されていない）ため、
+        // ※以前はこの時点で Twitter API の動作確認を実施していたが、React版ではこの時点ではサイドバーが表示されておらず get_logined_screen_name() で screen_name が取得できないため、
         //   最初に initialize_twitter_api() がコールされた時点で確認するように修正
         start_main( name_value_map );
     } );
