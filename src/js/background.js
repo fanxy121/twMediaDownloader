@@ -5,8 +5,7 @@
 w.chrome = ( ( typeof browser != 'undefined' ) && browser.runtime ) ? browser : chrome;
 
 
-//var DEBUG = false;
-var DEBUG = true;
+var DEBUG = false;
 
 
 function log_debug() {

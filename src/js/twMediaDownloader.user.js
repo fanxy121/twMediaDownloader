@@ -212,6 +212,8 @@ var LANGUAGE = ( function () {
     GIF_VIDEO_URL_BASE = 'https://video.twimg.com/tweet_video/#VIDEO_ID#.mp4',
     
     API2_AUTHORIZATION_BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
+    // ※ https://abs.twimg.com/responsive-web/web/main.<version>.js (例：https://abs.twimg.com/responsive-web/web/main.bd8d7749ae1a70054.js) 内で定義されている値
+    // TODO: 継続して使えるかどうか不明→変更された場合の対応を要検討
     API2_CONVERSATION_BASE = 'https://api.twitter.com/2/timeline/conversation/#TWEETID#.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_composer_source=true&include_ext_alt_text=true&include_reply_count=1&tweet_mode=extended&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&send_error_codes=true&count=20&ext=mediaStats%2ChighlightedLabel%2CcameraMoment',
     
     twitter_api = null,
@@ -256,6 +258,9 @@ switch ( LANGUAGE ) {
         OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_MARK = '＜ 日時 ＜';
         OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_LEFT = '下限日時';
         OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_RIGHT = '上限日時';
+        
+        OPTIONS.MENTIONS_DOWNLOAD_BUTTON_TEXT_LONG = '@ツイート ⇩';
+        OPTIONS.MENTIONS_DOWNLOAD_BUTTON_HELP_LONG = '通知(@ツイート)の画像/動画を保存';
         break;
     default:
         OPTIONS.DOWNLOAD_BUTTON_TEXT = '⇩';
@@ -287,6 +292,9 @@ switch ( LANGUAGE ) {
         OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_MARK = '< DATETIME <';
         OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_LEFT = 'Since datetime';
         OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_RIGHT = 'Until datetime';
+        
+        OPTIONS.MENTIONS_DOWNLOAD_BUTTON_TEXT_LONG = 'Mentions ⇩';
+        OPTIONS.MENTIONS_DOWNLOAD_BUTTON_HELP_LONG = 'Download images/videos of mentions from Notifications-timeline';
         break;
 }
 
@@ -625,7 +633,12 @@ function get_gif_video_url_from_playable_media( jq_target ) {
 
 function get_logined_screen_name() {
     try {
-        return $( '#user-dropdown .current-user a[data-nav="view_profile"]' ).attr( 'href' ).replace( /^.*\//g, '' );
+        if ( is_react_twitter() ) {
+            return $( 'nav[role="navigation"] > a[role="link"]:has(img[src*="/profile_images/"])').attr('href').replace( /^.*\//g, '' );
+        }
+        else {
+            return $( '#user-dropdown .current-user a[data-nav="view_profile"]' ).attr( 'href' ).replace( /^.*\//g, '' );
+        }
     }
     catch ( error ) {
         return '';
@@ -663,7 +676,12 @@ function get_screen_name( url ) {
 
 
 function get_profile_name() {
-    return $( 'h1.ProfileHeaderCard-name a.ProfileHeaderCard-nameLink' ).text().trim();
+    if ( is_react_twitter() ) {
+        return $( 'div[data-testid="primaryColumn"] h2[role="heading"] div[role="presentation"]' ).text().trim();
+    }
+    else {
+        return $( 'h1.ProfileHeaderCard-name a.ProfileHeaderCard-nameLink' ).text().trim();
+    }
 } // end of get_profile_name()
 
 
@@ -676,13 +694,28 @@ function get_tweet_id( url ) {
     if ( /^\d+$/.test( url ) ) {
         return url;
     }
-
-    if ( ! url.trim().match( /^https?:\/\/twitter\.com\/[^\/]+\/[^\/]+\/(\d+)(?:$|\/)/ ) ) {
-        return null;
+    
+    url = url.trim();
+    
+    if ( url.match( /^https?:\/\/twitter\.com\/[^\/]+\/[^\/]+\/(\d+)(?:$|\/)/ ) ) {
+        return RegExp.$1;
     }
     
-    return RegExp.$1;
+    if ( url.match( /^\/[^\/]+\/status(?:es)?\/(\d+)(?:$|\/)/ ) ) {
+        return RegExp.$1;
+    }
+    
+    return null;
 } // end of get_tweet_id()
+
+
+function judge_profile_timeline( url ) {
+    if ( ! url ) {
+        url = w.location.href;
+    }
+    
+    return ( !! get_screen_name( url ) ) && ( !! get_profile_name( url ) );
+} // end of judge_profile_timeline()
 
 
 function judge_search_timeline( url ) {
@@ -1354,7 +1387,18 @@ var download_media_timeline = ( function () {
                 self.logined_screen_name = get_logined_screen_name();
                 
                 if ( is_search_timeline ) {
-                    var search_query = $( '#search-query' ).val();
+                    var search_query;
+                    
+                    if ( is_react_twitter() ) {
+                        search_query = $( 'div[data-testid="primaryColumn"] form[role="search"] input[data-testid="SearchBox_Search_Input"]' ).val();
+                        
+                        if ( ! search_query ) {
+                            search_query = decodeURIComponent( url_info.query_map[ 'q' ] );
+                        }
+                    }
+                    else {
+                        search_query = $( '#search-query' ).val();
+                    }
                     
                     if ( OPTIONS.ENABLE_FILTER ) {
                         // 本スクリプトと競合するフィルタの類は削除しておく
@@ -2254,6 +2298,18 @@ var download_media_timeline = ( function () {
                         self.on_close( event );
                     } );
                 
+                if ( is_react_twitter() ) {
+                    jq_button_close
+                        .html( '&#215;' ) // ×
+                        .css( {
+                            'font-size' : '32px'
+                        ,   'display' : 'inline-block'
+                        ,   'position' : 'absolute'
+                        ,   'top' : '0'
+                        ,   'right' : '10px'
+                        } );
+                }
+                
                 self.jq_container = jq_container = $( '<div />' )
                     .attr( {
                         id : container_id
@@ -2276,7 +2332,8 @@ var download_media_timeline = ( function () {
                         event.stopPropagation();
                         event.preventDefault();
                         
-                        self.on_close( event );
+                        //self.on_close( event );
+                        // ※誤ってダウンロード中にダイアログ外をクリックし閉じてしまうため、無効化
                     } );
                 
                 jq_dialog = $( '<div />' )
@@ -2337,7 +2394,7 @@ var download_media_timeline = ( function () {
                     .css( {
                         'margin' : '12px 16px 6px 16px'
                     //,   'color' : '#66757f'
-                    ,   'font-size' : '16px'
+                    ,   'font-size' : ( is_react_twitter() ) ? '14px' : '16px'
                     } );
                 
                 jq_range_header.find( 'span.range_header_text' )
@@ -2560,6 +2617,11 @@ var download_media_timeline = ( function () {
                     ,   'left' : '50%'
                     ,   'transform' : 'translate(-50%, -50%)'
                     } );
+                
+                if ( is_react_twitter() ) {
+                    jq_log_mask.find( '.spinner-bigger' )
+                        .append( '<img src="https://abs.twimg.com/a/1460504487/img/t1/spinner-rosetta-gray-32x32.gif" />' );
+                }
                 
                 jq_checkbox_container
                     .append( jq_checkbox_image )
@@ -2977,25 +3039,25 @@ var download_media_timeline = ( function () {
                 var line_prefix = '';
                 
                 if ( ! is_search_timeline ) {
-                    line_prefix = '[@' + screen_name + '] ';
+                    line_prefix = '[@' + ( screen_name ? screen_name : logined_screen_name ) + '] ';
                     self.csv_push_row( {
-                        tweet_date : profile_name,
-                        action_date : '@' + screen_name,
+                        tweet_date : ( self.is_for_notifications_timeline ) ? 'Mentions to' : profile_name
+                    ,   action_date : '@' + ( screen_name ? screen_name : logined_screen_name )
                     } );
                 }
                 
                 if ( self.is_for_likes_timeline ) {
                     self.log( line_prefix + '"Likes" date-time range :', since_date, '-', until_date );
                     self.csv_push_row( {
-                        tweet_date : '"Likes" range:',
-                        action_date : since_date + ' ~ ' + until_date
+                        tweet_date : '"Likes" range:'
+                    ,   action_date : since_date + ' ~ ' + until_date
                     } );
                 }
                 else {
                     self.log( line_prefix + 'Tweet range :', ( ( since_id ) ? since_id : '<unspecified>' ), since_date, '-', ( ( until_id ) ? until_id : '<unspecified>' ), until_date );
                     self.csv_push_row( {
-                        tweet_date : 'Tweet range:',
-                        action_date : ( ( since_id ) ? since_id : '<unspecified>' ) + ' ' + since_date + ' ~ ' + ( ( until_id ) ? until_id : '<unspecified>' ) + ' ' + until_date
+                        tweet_date : 'Tweet range:'
+                    ,   action_date : ( ( since_id ) ? since_id : '<unspecified>' ) + ' ' + since_date + ' ~ ' + ( ( until_id ) ? until_id : '<unspecified>' ) + ' ' + until_date
                     } );
                 }
                 
@@ -3879,6 +3941,8 @@ var download_media_timeline = ( function () {
 
 var check_timeline_headers = ( function () {
     var button_class_name = SCRIPT_NAME + '_download_button',
+        button_container_class_name = SCRIPT_NAME + '_download_button_container',
+        
         jq_button_template = $( '<a />' )
             .addClass( button_class_name )
             .addClass( 'js-tooltip' )
@@ -3886,11 +3950,13 @@ var check_timeline_headers = ( function () {
                 href : '#'
             ,   title : OPTIONS.DOWNLOAD_BUTTON_HELP_TEXT
             } )
+            /*
             .css( {
                 'font-size' : '16px'
             ,   'vertical-align' : 'middle'
             ,   'text-decoration' : 'underline'
             } )
+            */
             .click( function ( event ) {
                 var jq_button = $( this );
                 
@@ -3907,45 +3973,89 @@ var check_timeline_headers = ( function () {
                 return false;
             } );
     
+    if ( is_react_twitter() ) {
+        jq_button_template.attr( 'role', 'link' );
+    }
+    
     function check_search_timeline( jq_node ) {
         if ( ! judge_search_timeline() ) {
             return;
         }
         
-        var jq_target_container = ( jq_node.hasClass( 'AdaptiveFiltersBar-nav' ) ) ? jq_node : jq_node.find( 'ul.AdaptiveFiltersBar-nav' );
+        var jq_target_container = $();
+        
+        if ( is_react_twitter() ) {
+            jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div:first' );
+            if ( 0 < jq_target_container.find( '.' + button_container_class_name ).length ) {
+                jq_target_container = $();
+            }
+        }
+        else {
+            jq_target_container = ( jq_node.hasClass( 'AdaptiveFiltersBar-nav' ) ) ? jq_node : jq_node.find( 'ul.AdaptiveFiltersBar-nav' );
+        }
         
         if ( jq_target_container.length <= 0 ) {
             return;
         }
 
-        var jq_button = jq_button_template.clone( true ),
-            jq_button_container = $( '<li class="AdaptiveFiltersBar-item u-borderUserColor" />' ).addClass( SCRIPT_NAME + '_download_button_container' );
+        jq_target_container.find( '.' + button_container_class_name ).remove();
         
-        jq_target_container.find( '.' + SCRIPT_NAME + '_download_button_container' ).remove();
+        var jq_button = jq_button_template.clone( true )
+                .text( OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG ),
+            
+            jq_button_container;
         
-        jq_button
-            .text( OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG )
-            .css( {
-                'font-size' : '14px'
-            ,   'font-weight' : 'bold'
-            ,   'line-height' : '20px'
-            //,   'color' : '#657786'
-            ,   'display' : 'block'
-            ,   'padding' : '16px'
-            } );
+        if ( is_react_twitter() ) {
+            jq_button_container = $( '<div />' )
+                .css( {
+                    'right' : '12px'
+                ,   'bottom' : '38px'
+                } );
+        }
+        else {
+            jq_button_container = $( '<li class="AdaptiveFiltersBar-item u-borderUserColor" />' );
+            
+            jq_button.css( {
+                    'font-size' : '14px'
+                ,   'font-weight' : 'bold'
+                ,   'line-height' : '20px'
+                //,   'color' : '#657786'
+                ,   'display' : 'block'
+                ,   'padding' : '16px'
+                } );
+        }
         
-        jq_button_container.append( jq_button );
+        jq_button_container
+            .addClass( button_container_class_name )
+            .append( jq_button );
+        
         jq_target_container.append( jq_button_container );
         
     } // end of check_search_timeline()
     
     
     function check_profile_nav( jq_node ) {
-        var jq_target_container = ( jq_node.hasClass( 'ProfileNav-list' ) ) ? jq_node : jq_node.find( 'ul.ProfileNav-list' );
+        if ( is_react_twitter() && ( ! judge_profile_timeline() ) ) {
+            return;
+        }
+        
+        var jq_target_container = $();
+        
+        if ( is_react_twitter() ) {
+            jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div:has(h2[role="heading"] div[role="presentation"]):first' );
+            if ( 0 < jq_target_container.find( '.' + button_container_class_name ).length ) {
+                jq_target_container = $();
+            }
+        }
+        else {
+            jq_target_container = ( jq_node.hasClass( 'ProfileNav-list' ) ) ? jq_node : jq_node.find( 'ul.ProfileNav-list' );
+        }
         
         if ( jq_target_container.length <= 0 ) {
             return;
         }
+        
+        jq_target_container.find( '.' + button_container_class_name ).remove();
         
         var jq_button = jq_button_template.clone( true )
                 .text( OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG ),
@@ -3955,53 +4065,78 @@ var check_timeline_headers = ( function () {
                 .text( OPTIONS.LIKES_DOWNLOAD_BUTTON_TEXT_LONG )
                 .attr( 'title', OPTIONS.LIKES_DOWNLOAD_BUTTON_HELP_TEXT ),
             
-            jq_button_container = $( '<li class="ProfileNav-item" />' )
-                .append( jq_likes_button )
-                .append( jq_button )
-                .addClass( SCRIPT_NAME + '_download_button_container' )
-                .css( {
-                    'text-align' : 'right'
-                } ),
+            jq_button_container,
             jq_insert_point = jq_target_container.find( '.ProfileNav-item--more' );
         
-        jq_target_container.find( '.' + SCRIPT_NAME + '_download_button_container' ).remove();
-        
-        jq_button_container.find( '.' + SCRIPT_NAME + '_download_button' ).css( {
-                'font-size' : '14px'
-            ,   'font-weight' : 'bold'
-            ,   'line-height' : '20px'
-            //,   'color' : '#657786'
-            ,   'display' : 'block'
-            ,   'padding' : '0'
-            } );
-        
-        if ( 0 < jq_insert_point.length ) {
-            jq_insert_point.before( jq_button_container );
+        if ( is_react_twitter() ) {
+            jq_button_container = $( '<div />' )
+                .append( jq_button )
+                .append( jq_likes_button )
+                .css( {
+                    'right' : '130px'
+                ,   'bottom' : '2px'
+                } );
+            
+            jq_button
+                .css( {
+                    'margin-right' : '16px'
+                } );
         }
         else {
-            jq_target_container.append( jq_button_container );
+            jq_button_container= $( '<li class="ProfileNav-item" />' )
+                .append( jq_likes_button )
+                .append( jq_button )
+                .css( {
+                    'text-align' : 'right'
+                } );
         }
         
-        if ( jq_target_container.find( 'a[data-nav="favorites"]' ).length <= 0 ) {
-            jq_likes_button.hide();
+        jq_button_container
+            .addClass( button_container_class_name );
+        
+        if ( is_react_twitter() ) {
+            jq_target_container.append( jq_button_container );
+        }
+        else {
+            jq_button_container.find( '.' + button_class_name ).css( {
+                    'font-size' : '14px'
+                ,   'font-weight' : 'bold'
+                ,   'line-height' : '20px'
+                //,   'color' : '#657786'
+                ,   'display' : 'block'
+                ,   'padding' : '0'
+                } );
+            
+            if ( jq_target_container.find( 'a[data-nav="favorites"]' ).length <= 0 ) {
+                jq_likes_button.hide();
+            }
+            
+            if ( 0 < jq_insert_point.length ) {
+                jq_insert_point.before( jq_button_container );
+            }
+            else {
+                jq_target_container.append( jq_button_container );
+            }
         }
         
     } // end of check_profile_nav()
     
     
     function check_profile_heading( jq_node ) {
+        if ( is_react_twitter() ) {
+            return;
+        }
+        
         var jq_target_container = ( jq_node.attr( 'data-element-term' ) == 'photos_and_videos_toggle' ) ? jq_node : jq_node.find( 'li[data-element-term="photos_and_videos_toggle"]' );
         
         if ( jq_target_container.length <= 0 ) {
             return;
         }
         
-        var jq_button = jq_button_template.clone( true );
-        
-        jq_button
-            .text( OPTIONS.DOWNLOAD_BUTTON_TEXT )
-            .css( {
-            } );
+        var jq_button = jq_button_template.clone( true )
+                .text( OPTIONS.DOWNLOAD_BUTTON_TEXT )
+                .css( {
+                } );
         
         jq_target_container.find( '.' + button_class_name ).remove();
         jq_target_container.append( jq_button );
@@ -4014,22 +4149,50 @@ var check_timeline_headers = ( function () {
             return;
         }
         
-        var jq_target_container = ( jq_node.attr( 'data-element-term' ) == 'mentions_toggle' ) ? jq_node : jq_node.find( 'li[data-element-term="mentions_toggle"]' );
+        var jq_target_container = $();
+        
+        if ( is_react_twitter() ) {
+            jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div:first' );
+            if ( 0 < jq_target_container.find( '.' + button_container_class_name ).length ) {
+                jq_target_container = $();
+            }
+        }
+        else {
+            jq_target_container = ( jq_node.attr( 'data-element-term' ) == 'mentions_toggle' ) ? jq_node : jq_node.find( 'li[data-element-term="mentions_toggle"]' );
+        }
         
         if ( jq_target_container.length <= 0 ) {
             return;
         }
         
-        var jq_button = jq_button_template.clone( true ).addClass( 'notifications' );
-        
-        jq_button
-            .text( OPTIONS.DOWNLOAD_BUTTON_TEXT )
-            .css( {
-            } );
-        
         jq_target_container.find( '.' + button_class_name ).remove();
-        jq_target_container.append( jq_button );
         
+        var jq_button = jq_button_template.clone( true )
+                .addClass( 'notifications' )
+                .attr( 'title', OPTIONS.MENTIONS_DOWNLOAD_BUTTON_HELP_LONG )
+                .css( {
+                } ),
+            
+            jq_button_container;
+        
+        if ( is_react_twitter() ) {
+            jq_button.text( OPTIONS.MENTIONS_DOWNLOAD_BUTTON_TEXT_LONG );
+            
+            jq_button_container = $( '<div />' )
+                .addClass( button_container_class_name )
+                .css( {
+                    'right' : '130px'
+                ,   'bottom' : '2px'
+                } )
+                .append( jq_button );
+            
+            jq_target_container.append( jq_button_container );
+        }
+        else {
+            jq_button.text( OPTIONS.DOWNLOAD_BUTTON_TEXT );
+            
+            jq_target_container.append( jq_button );
+        }
     } // end of check_notifications_timeline()
     
     
@@ -4055,21 +4218,17 @@ function add_media_button_to_tweet( jq_tweet ) {
         jq_action_list,
         jq_images,
         jq_playable_media,
+        tweet_url,
+        screen_name,
+        timestamp_ms,
+        jq_tweet_time,
         jq_tweet_profile_link,
         media_number = 0;
     
     if ( is_react_twitter() ) {
-        var tweet_url = jq_tweet.find( 'a[role="link"][href^="/"][href*="/status/"]:has(time)' ).attr( 'href' ),
-            screen_name,
-            timestamp_ms,
-            jq_tweet_time = jq_tweet.find( 'a[role="link"] time[datetime]' );
+        tweet_url = jq_tweet.find( 'a[role="link"][href^="/"][href*="/status/"]:has(time)' ).attr( 'href' );
+        jq_tweet_time = jq_tweet.find( 'a[role="link"] time[datetime]' );
             
-        jq_tweet_profile_link = $( '<a class="js-user-profile-link js-action-profile" />' )
-            .addClass( SCRIPT_NAME + '_tweet_profile' )
-            .css( 'display', 'none' );
-        
-        //tweet_id = ( tweet_url ) ? tweet_url.match( /\/status(?:es)?\/(\d+)/ )[ 1 ] : get_tweet_id( location.href );
-        
         if ( ! tweet_url ) {
             tweet_url = new URL( location.href ).pathname;
         }
@@ -4087,6 +4246,7 @@ function add_media_button_to_tweet( jq_tweet ) {
             timestamp_ms = new Date( jq_tweet_time.attr( 'datetime' ) ).getTime();
         }
         else {
+            // TODO: 個別ツイートの場合、日付が取得できない→ツイートIDから取得しているが、2010年11月以前は未対応
             try {
                 timestamp_ms = tweet_id_to_date( tweet_id ).getTime();
             }
@@ -4094,10 +4254,6 @@ function add_media_button_to_tweet( jq_tweet ) {
                 timestamp_ms = new Date().getTime();
             }
         }
-        
-        jq_tweet_profile_link
-            .attr( 'href', '/' + screen_name )
-            .attr( 'data-time-ms', timestamp_ms );
         
         jq_action_list = jq_tweet.find( 'div[dir="auto"]:has(>a[role="link"][href*="/help.twitter.com/"])' );
         if ( jq_action_list.length <= 0 ) {
@@ -4136,8 +4292,15 @@ function add_media_button_to_tweet( jq_tweet ) {
                 if ( background_image.match( /tweet_video_thumb/ ) ) {
                     jq_playable_media.addClass( 'PlayableMedia--gif' );
                 }
-                else if ( background_image.match( /(?:_video_thumb\/\d+\/|\/media\/)/ ) ) {
+                //else if ( background_image.match( /(?:_video_thumb\/\d+\/|\/media\/)/ ) ) {
+                //    jq_playable_media.addClass( 'PlayableMedia--video' );
+                //}
+                else if ( ! background_image.match( /card_img/ ) ) {
                     jq_playable_media.addClass( 'PlayableMedia--video' );
+                }
+                else {
+                    // TODO: GIF / VIDEO 以外は未対応
+                    //jq_playable_media.addClass( 'PlayableMedia--vine' );
                 }
             }
             else {
@@ -4159,6 +4322,27 @@ function add_media_button_to_tweet( jq_tweet ) {
         return;
     }
     
+    if ( is_react_twitter() ) {
+        // ダウンロード用の情報取得向けに要素埋め込み
+        jq_tweet.find( '.' + SCRIPT_NAME + '_tweet_profile' ).remove();
+        
+        jq_tweet_profile_link = $( '<a class="js-user-profile-link js-action-profile" />' )
+            .addClass( SCRIPT_NAME + '_tweet_profile' )
+            .attr( {
+                'href' : '/' + screen_name
+            ,   'data-tweet-url' :  tweet_url
+            ,   'data-time-ms' : timestamp_ms
+            ,   'data-screen_name' :  screen_name
+            ,   'data-tweet-id' :  tweet_id
+            } )
+            .css( 'display', 'none' );
+        
+        jq_tweet.append( jq_tweet_profile_link );
+    }
+    
+    screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' );
+    timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' );
+    
     var tooltip_title = ( OPTIONS.OPEN_MEDIA_LINK_BY_DEFAULT ) ? OPTIONS.OPEN_MEDIA_LINK : OPTIONS.DOWNLOAD_MEDIA_TITLE,
         tooltip_alt_title = ( OPTIONS.OPEN_MEDIA_LINK_BY_DEFAULT ) ? OPTIONS.DOWNLOAD_MEDIA_TITLE : OPTIONS.OPEN_MEDIA_LINK,
         jq_media_button_container = $( '<div><button/></div>' )
@@ -4175,10 +4359,6 @@ function add_media_button_to_tweet( jq_tweet ) {
     
     jq_action_list.find( '.' + media_button_class_name ).remove();
     
-    if ( is_react_twitter() ) {
-        jq_tweet.find( '.' + SCRIPT_NAME + '_tweet_profile' ).remove();
-        jq_tweet.append( jq_tweet_profile_link );
-    }
     
     function is_open_image_mode( event ) {
         return ( ( ( ! OPTIONS.OPEN_MEDIA_LINK_BY_DEFAULT ) && ( event.altKey ) ) || ( ( OPTIONS.OPEN_MEDIA_LINK_BY_DEFAULT ) && ( ! event.altKey ) ) );
@@ -4243,8 +4423,6 @@ function add_media_button_to_tweet( jq_tweet ) {
             
             var image_info_list = [],
                 download_counter = jq_images.length,
-                screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' ),
-                timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' ),
                 date = new Date( parseInt( timestamp_ms, 10 ) ),
                 timestamp = ( timestamp_ms ) ? format_date( date, 'YYYYMMDD_hhmmss' ) : '',
                 zipdate = adjust_date_for_zip( date ),
@@ -4472,9 +4650,7 @@ function add_media_button_to_tweet( jq_tweet ) {
     
     
     function activate_video_download_link( video_url, media_prefix ) {
-        var screen_name = jq_tweet.find( 'a.js-user-profile-link.js-action-profile:first' ).attr( 'href' ).replace( /^.*\//, '' ),
-            timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' ),
-            timestamp = ( timestamp_ms ) ? format_date( new Date( parseInt( timestamp_ms, 10 ) ), 'YYYYMMDD_hhmmss' ) : '',
+        var timestamp = ( timestamp_ms ) ? format_date( new Date( parseInt( timestamp_ms, 10 ) ), 'YYYYMMDD_hhmmss' ) : '',
             filename = [ screen_name, tweet_id, timestamp, media_prefix + '1' ].join( '-' ) + '.' + get_video_extension( video_url ),
             clickable = true;
         
@@ -4704,6 +4880,10 @@ function check_media_tweets( node ) {
     }
     
     if ( is_react_twitter() ) {
+        if ( jq_node.parents( 'div[data-testid="primaryColumn"]' ).length <= 0 ) {
+            return false;
+        }
+        
         jq_tweets = jq_node.find( 'article[role="article"]:has(div[data-testid="tweet"]):has(div[aria-label] > img)' );
         
         if ( jq_tweets.length <= 0 ) {
@@ -4777,6 +4957,10 @@ function start_mutation_observer() {
     new MutationObserver( function ( records ) {
         update_display_mode();
         
+        if ( is_react_twitter() ) {
+            check_timeline_headers( d.body );
+        }
+        
         records.forEach( function ( record ) {
             var target = record.target;
             
@@ -4789,7 +4973,9 @@ function start_mutation_observer() {
                     check_media_tweets( addedNode );
                 }
                 
-                check_timeline_headers( addedNode );
+                if ( ! is_react_twitter() ) {
+                    check_timeline_headers( addedNode );
+                }
             } );
         } );
     } ).observe( d.body, { childList : true, subtree : true } );
@@ -4923,9 +5109,13 @@ function initialize( user_options ) {
             log_selector = status_container_selector + ' .' + SCRIPT_NAME + '_log',
             log_mask_selector = status_container_selector + ' .' + SCRIPT_NAME + '_log_mask',
             
-            nightmode_selector = 'body[data-nightmode="true"]',
+            night_mode_selector = 'body[data-nightmode="true"]',
             media_button_selector = '.' + SCRIPT_NAME + '_media_button button.btn',
-            nightmode_media_button_selector = nightmode_selector + ' ' + media_button_selector,
+            night_mode_media_button_selector = night_mode_selector + ' ' + media_button_selector,
+            header_button_selector = '.' + SCRIPT_NAME + '_download_button',
+            night_mode_header_button_selector = night_mode_selector + ' ' + header_button_selector,
+            header_button_container_selector = '.' + SCRIPT_NAME + '_download_button_container',
+            night_mode_header_button_container_selector = night_mode_selector + ' ' + header_button_container_selector,
             
             css_rule_lines = [
                 '.' + SCRIPT_NAME + '_toolbox label {cursor: pointer;}'
@@ -4969,15 +5159,33 @@ function initialize( user_options ) {
             ,   night_mode_dialog_container_selector + ' ' + log_selector + ' .log-item a.media-link {color: #add8e6;}'
             
             ,   media_button_selector + ' {font-size: 12px; font-weight: normal; padding: 2px 3px; text-decoration: none; cursor: pointer; display: inline-block;}'
+            ,   header_button_selector + ' {font-size: 16px; vertical-align: middle; text-decoration: underline}'
             ];
         
         if ( is_react_twitter() ) {
             var css_rule_lines_react = [
                     media_button_selector + ' {margin-left: 8px; margin-right: 8px; background-image: linear-gradient(rgb(255, 255, 255), rgb(245, 248, 250)); background-color: rgb(245, 248, 250); color: rgb(102, 117, 127); cursor: pointer; display: inline-block; position: relative; border-width: 1px; border-style: solid; border-color: rgb(230, 236, 240); border-radius: 4px;}'
                 ,   media_button_selector + ':hover {color: rgb(20, 23, 26); background-color: rgb(230, 236, 240); background-image: linear-gradient(rgb(255, 255, 255), rgb(230, 236, 240)); text-decoration: none; border-color: rgb(230, 236, 240);}'
+                ,   header_button_selector + ' {color: rgb(27, 149, 224); font-weight: bolder;}'
+                ,   header_button_container_selector + '{position: absolute; z-index: 1000;}'
+                ,   dialog_container_selector + ' ' + log_selector + ' pre {margin: 0 0;}'
+                ,   dialog_container_selector + ' ' + range_container_selector + ' {font-size:14px;}'
+                ,   dialog_container_selector + ' ' + range_container_selector + ' input[type="text"] {padding: 2px 2px;}'
+                ,   dialog_container_selector + ' .btn {background-color: #f5f8fa; background-image: linear-gradient(#fff,#f5f8fa); background-repeat: no-repeat; border: 1px solid #e6ecf0; border-radius: 4px; color: #66757f; cursor: pointer; display: inline-block; font-size: 14px; font-weight: bold; line-height: normal; padding: 8px 16px; position: relative;}'
+                ,   dialog_container_selector + ' .btn:focus {outline: 0!important; box-shadow: 0 0 0 2px #fff, 0 0 2px 4px rgba(255, 0, 0, 0.4); background: #fff; border-color: #fff; text-decoration: none;}'
+                ,   dialog_container_selector + ' .btn:hover {color: #14171a; text-decoration: none; background-color: #e6ecf0; background-image: linear-gradient(#fff,#e6ecf0); border-color: #e6ecf0;}'
+                ,   dialog_container_selector + ' .btn:active {outline: 0!important; color: #14171a; background: #e6ecf0; border-color: #ccd6dd; box-shadow: inset 0 1px 4px rgba(0,0,0,0.25);}'
+                ,   dialog_container_selector + ' .btn:focus:hover {border-color: #fff;}'
+                ,   dialog_container_selector + ' .btn[disabled] {color: #66757f; cursor: default; background-color: #ccd6dd; background-image: linear-gradient(#fff,#f5f8fa); border-color: #ccd6dd; opacity: .5; -ms-filter: "alpha(opacity=50)";}'
                 
-                ,   nightmode_media_button_selector + ' {background-color: #182430; background-image: none; border: 1px solid #38444d; border-radius: 4px; color: #8899a6; display: inline-block;}'
-                ,   nightmode_media_button_selector + ':hover {color: #fff; text-decoration: none; background-color: #10171e; background-image: none; border-color: #10171e;}'
+                ,   night_mode_media_button_selector + ' {background-color: #182430; background-image: none; border: 1px solid #38444d; border-radius: 4px; color: #8899a6; display: inline-block;}'
+                ,   night_mode_media_button_selector + ':hover {color: #fff; text-decoration: none; background-color: #10171e; background-image: none; border-color: #10171e;}'
+                ,   night_mode_dialog_container_selector + ' .btn {background-color: rgb(24, 36, 48); background-image: none; color: rgb(136, 153, 166); cursor: pointer; display: inline-block; font-size: 14px; font-weight: bold; line-height: normal; position: relative; background-repeat: no-repeat; border-width: 1px; border-style: solid; border-color: rgb(56, 68, 77); border-image: initial; border-radius: 4px; padding: 8px 16px;}'
+                ,   night_mode_dialog_container_selector + ' .btn:focus {outline: 0!important;}'
+                ,   night_mode_dialog_container_selector + ' .btn:hover {color: rgb(255, 255, 255); background-color: rgb(16, 23, 30); background-image: none; text-decoration: none; border-color: rgb(16, 23, 30);}'
+                ,   night_mode_dialog_container_selector + ' .btn:active {color: rgb(255, 255, 255); box-shadow: rgba(0, 0, 0, 0.25) 0px 1px 4px inset; background: rgb(16, 23, 30); border-color: rgb(56, 68, 77);}'
+                ,   night_mode_dialog_container_selector + ' .btn:focus:hover {border-color: #fff;}'
+                ,   night_mode_dialog_container_selector + ' .btn[disabled] {color: #8899a6; cursor: default; background-color: #38444d; background-image: linear-gradient(#fff,#182430); border-color: #38444d; opacity: .5; -ms-filter: "alpha(opacity=50)";}'
                 ];
             
             css_rule_lines = css_rule_lines.concat( css_rule_lines_react );
