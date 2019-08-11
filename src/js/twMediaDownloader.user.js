@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.2.2
+// @version         0.1.2.3
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -120,6 +120,10 @@ var OPTIONS = {
     // /statuses/show.json の場合、15分で900回（正確に 900回／15分というわけではなく、15分毎にリセットされる）→1秒以上は空けておく
     // TODO: 別のタブで並列して実行されている場合や、別ブラウザでの実行は考慮していない
 ,   TWITTER_OAUTH_POPUP : true // true: OAuth 認証時、ポップアップウィンドウを使用 / false: 同、別タブを使用
+
+,   TWITTER_API2_DELAY_TIME_MS : 5100 // Twitter API2 コール時、前回からの最小間隔(ms)
+    // ※ api.twitter.com/2/timeline/conversation の場合、15分で800回
+    // TODO: 別のタブで並列して実行されている場合や、別ブラウザでの実行は考慮していない
 
 ,   USE_APPLICATION_AUTH : false // true: Twitter のユーザー認証(OAuth)失敗時、アプリケーション認証(OAuth2)を使用
 ,   CACHE_OAUTH2_ACCESS_TOKEN : true // true: OAuth2 の Access Token を再利用する(USE_APPLICATION_AUTH時のみ有効)
@@ -951,7 +955,7 @@ var api2_get_csrf_token = function () {
 
 
 function twitter_api_is_enabled() {
-    return ( api2_get_csrf_token() || twitter_api || oauth2_access_token );
+    return ( twitter_api || api2_get_csrf_token() || oauth2_access_token );
 } // end of twitter_api_is_enabled()
 
 
@@ -1063,8 +1067,8 @@ function initialize_twitter_api() {
     var jq_deferred = new $.Deferred(),
         logined_screen_name = get_logined_screen_name(),
         
-        init_api_main = function () {
-            if ( twitter_api_is_enabled() || ( ! OPTIONS.ENABLE_VIDEO_DOWNLOAD ) ) {
+        init_api_main = function ( auth_required ) {
+            if ( ( ! OPTIONS.ENABLE_VIDEO_DOWNLOAD ) || ( twitter_api_is_enabled() && ( ( ! auth_required ) || twitter_api ) ) ) {
                 finish();
                 return;
             }
@@ -1207,13 +1211,13 @@ function initialize_twitter_api() {
     api2_get_tweet_info( target_tweet_id )
     .done( function ( json, textStatus, jqXHR ) {
         log_info( 'API2 (api.twitter.com/2/) is available.' );
-        init_api_main();
     } )
     .fail( function ( jqXHR, textStatus, errorThrown ) {
         log_error( 'API2 (api.twitter.com/2/) is not available. (', jqXHR.statusText, ':', textStatus, ')' );
         
         api2_get_csrf_token = () => false; // API2 無効化
-        
+    } )
+    .always( function () {
         if ( typeof Twitter != 'undefined' ) {
             // OAuth 1.0a 用のキャッシュされたtokenが有効かを確認
             Twitter.initialize( {
@@ -1225,22 +1229,21 @@ function initialize_twitter_api() {
             } )
             .isAuthenticated()
             .done( function ( api, result ) {
-                    twitter_api = api;
-                    
-                    var current_user = Twitter.getCurrentUser();
-                    
-                    log_info( 'User authentication (OAuth 1.0a) is enabled. (screen_name:' + current_user.screen_name + ', user_id:' + current_user.user_id + ')' );
+                twitter_api = api;
                 
+                var current_user = Twitter.getCurrentUser();
+                
+                log_info( 'User authentication (OAuth 1.0a) is enabled. (screen_name:' + current_user.screen_name + ', user_id:' + current_user.user_id + ')' );
             } )
             .fail( function ( result ) {
                 log_info( 'Invalid cached token (' + result + ')' );
             } )
             .always( function () {
-                init_api_main();
+                init_api_main( true );
             } );
         }
         else {
-            init_api_main();
+            init_api_main( true );
         }
     } );
     
@@ -1251,9 +1254,13 @@ function initialize_twitter_api() {
 var twitter_api_delay = ( function () {
     var last_called_time_ms = new Date().getTime();
     
-    return function () {
+    return function ( min_wait_ms ) {
+        if ( ! min_wait_ms ) {
+            min_wait_ms = OPTIONS.TWITTER_API2_DELAY_TIME_MS;
+        }
+        
         var jq_deferred = new $.Deferred(),
-            delay_time_ms = ( OPTIONS.TWITTER_API_DELAY_TIME_MS ) ? ( last_called_time_ms + OPTIONS.TWITTER_API_DELAY_TIME_MS - new Date().getTime() ) : 1;
+            delay_time_ms = ( min_wait_ms ) ? ( last_called_time_ms + min_wait_ms - new Date().getTime() ) : 1;
         
         if ( delay_time_ms < 0 ) {
             delay_time_ms = 1;
@@ -1320,26 +1327,23 @@ function twitter_api_get_json( api_url, options ) {
         options = {};
     }
     
-    return twitter_api_delay()
-        .then( function () {
-            var csrf_token = api2_get_csrf_token(),
-                tweet_id = ( function () {
-                    var tweet_id;
-                    
-                    try {
-                        tweet_id = ( api_url.match( /\/(\d+)\.json/ ) || api_url.match( /&id=(\d+)/ ) )[ 1 ];
-                    }
-                    catch ( error ) {
-                    }
-                    
-                    return tweet_id;
-                } )();
+    var csrf_token = api2_get_csrf_token(),
+        tweet_id = ( function () {
+            var tweet_id;
             
-            if ( csrf_token && tweet_id ) {
-                // API2 使用
-                return api2_get_tweet_info( tweet_id );
+            try {
+                tweet_id = ( api_url.match( /\/(\d+)\.json/ ) || api_url.match( /&id=(\d+)/ ) )[ 1 ];
             }
-            else if ( twitter_api ) {
+            catch ( error ) {
+            }
+            
+            return tweet_id;
+        } )(),
+        min_wait_ms = ( twitter_api ) ? OPTIONS.TWITTER_API_DELAY_TIME_MS : OPTIONS.TWITTER_API2_DELAY_TIME_MS;
+    
+    return twitter_api_delay( min_wait_ms )
+        .then( function () {
+            if ( twitter_api ) {
                 // API1.1 (OAuth 1.0a ユーザー認証) 使用
                 var parameters = {};
                 
@@ -1349,6 +1353,10 @@ function twitter_api_get_json( api_url, options ) {
                     };
                 }
                 return twitter_api( api_url, 'GET', parameters );
+            }
+            else if ( csrf_token && tweet_id ) {
+                // API2 使用
+                return api2_get_tweet_info( tweet_id );
             }
             else if ( oauth2_access_token ) {
                 // API1.1 (OAuth2 アプリケーション認証) 使用
