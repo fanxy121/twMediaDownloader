@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.2.4
+// @version         0.1.2.5
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -4097,7 +4097,7 @@ var check_timeline_headers = ( function () {
     
     function check_search_timeline( jq_node ) {
         if ( ! judge_search_timeline() ) {
-            return;
+            return false;
         }
         
         var jq_target_container = $();
@@ -4113,7 +4113,7 @@ var check_timeline_headers = ( function () {
         }
         
         if ( jq_target_container.length <= 0 ) {
-            return;
+            return false;
         }
 
         jq_target_container.find( '.' + button_container_class_name ).remove();
@@ -4149,12 +4149,13 @@ var check_timeline_headers = ( function () {
         
         jq_target_container.append( jq_button_container );
         
+        return true;
     } // end of check_search_timeline()
     
     
     function check_profile_nav( jq_node ) {
         if ( is_react_twitter() && ( ! judge_profile_timeline() ) ) {
-            return;
+            return false;
         }
         
         var jq_target_container = $();
@@ -4170,7 +4171,7 @@ var check_timeline_headers = ( function () {
         }
         
         if ( jq_target_container.length <= 0 ) {
-            return;
+            return false;
         }
         
         jq_target_container.find( '.' + button_container_class_name ).remove();
@@ -4237,18 +4238,19 @@ var check_timeline_headers = ( function () {
             }
         }
         
+        return true;
     } // end of check_profile_nav()
     
     
     function check_profile_heading( jq_node ) {
         if ( is_react_twitter() ) {
-            return;
+            return false;
         }
         
         var jq_target_container = ( jq_node.attr( 'data-element-term' ) == 'photos_and_videos_toggle' ) ? jq_node : jq_node.find( 'li[data-element-term="photos_and_videos_toggle"]' );
         
         if ( jq_target_container.length <= 0 ) {
-            return;
+            return false;
         }
         
         var jq_button = jq_button_template.clone( true )
@@ -4259,12 +4261,13 @@ var check_timeline_headers = ( function () {
         jq_target_container.find( '.' + button_class_name ).remove();
         jq_target_container.append( jq_button );
         
+        return true;
     } // end of check_profile_heading()
     
     
     function check_notifications_timeline( jq_node ) {
         if ( ! judge_notifications_timeline() ) {
-            return;
+            return false;
         }
         
         var jq_target_container = $();
@@ -4280,10 +4283,10 @@ var check_timeline_headers = ( function () {
         }
         
         if ( jq_target_container.length <= 0 ) {
-            return;
+            return false;
         }
         
-        jq_target_container.find( '.' + button_class_name ).remove();
+        jq_target_container.find( '.' + button_container_class_name ).remove();
         
         var jq_button = jq_button_template.clone( true )
                 .addClass( 'notifications' )
@@ -4311,6 +4314,8 @@ var check_timeline_headers = ( function () {
             
             jq_target_container.append( jq_button );
         }
+        
+        return true;
     } // end of check_notifications_timeline()
     
     
@@ -4319,12 +4324,22 @@ var check_timeline_headers = ( function () {
             return false;
         }
         
-        var jq_node = $( node );
+        var jq_node = $( node ),
+            counter = 0;
         
-        check_profile_nav( jq_node );
-        check_profile_heading( jq_node );
-        check_search_timeline( jq_node );
-        check_notifications_timeline( jq_node );
+        if ( is_react_twitter() ) {
+            if ( 0 < jq_node.find( '.' + button_container_class_name ).length ) {
+                return false;
+            }
+        }
+        if ( check_profile_nav( jq_node ) ) counter ++;
+        if ( check_profile_heading( jq_node ) ) counter ++;
+        if ( check_search_timeline( jq_node ) ) counter ++;
+        if ( check_notifications_timeline( jq_node ) ) counter ++;
+        
+        if ( 0 < counter ) log_debug( 'check_timeline_headers():', counter );
+        
+        return ( 0 < counter );
     };
 
 } )(); // end of check_timeline_headers()
@@ -4446,7 +4461,7 @@ function add_media_button_to_tweet( jq_tweet ) {
     media_number = ( 0 < jq_playable_media.length ) ? 1 : jq_images.length;
     
     if ( ( ! tweet_id ) || ( media_number <= 0 ) || ( jq_action_list.find( '.' + media_button_class_name ).attr( 'data-media-number' ) == media_number ) ) {
-        return;
+        return false;
     }
     
     if ( is_react_twitter() ) {
@@ -4914,11 +4929,11 @@ function add_media_button_to_tweet( jq_tweet ) {
                     
                     var video_url;
                     
-                    if ( is_react_twitter() ) {
-                        video_url = json.extended_entities.media[ 0 ].video_info.variants[ 0 ].url;
-                    }
-                    else {
+                    try {
                         video_url = json.track.playbackUrl;
+                    }
+                    catch ( error ) {
+                        video_url = json.extended_entities.media[ 0 ].video_info.variants[ 0 ].url;
                     }
                     
                     if ( ! is_video_url( video_url ) ) {
@@ -5021,6 +5036,8 @@ function add_media_button_to_tweet( jq_tweet ) {
     else {
         jq_action_list.append( jq_media_button_container );
     }
+    
+    return ( 0 < jq_media_button_container.length );
 } // end of add_media_button_to_tweet()
 
 
@@ -5087,11 +5104,13 @@ function check_media_tweets( node ) {
         } )();
     }
     
-    jq_tweets.each( function () {
+    jq_tweets = jq_tweets.filter( function ( index ) {
         var jq_tweet = $( this );
         
-        add_media_button_to_tweet( jq_tweet );
+        return add_media_button_to_tweet( jq_tweet );
     } );
+
+    if ( 0 < jq_tweets.length ) log_debug( 'check_media_tweets():', jq_tweets.length );
     
     return ( 0 < jq_tweets.length );
 } // end of check_media_tweets()
@@ -5117,6 +5136,8 @@ function update_display_mode() {
 
 function start_mutation_observer() {
     new MutationObserver( function ( records ) {
+        log_debug( '*** MutationObserver ***', records );
+        
         update_display_mode();
         
         if ( is_react_twitter() ) {
