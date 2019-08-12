@@ -4161,7 +4161,7 @@ var check_timeline_headers = ( function () {
         var jq_target_container = $();
         
         if ( is_react_twitter() ) {
-            jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div:has(h2[role="heading"] div[role="presentation"]):first' );
+            jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div:first:has(h2[role="heading"] div[role="presentation"])' );
             if ( 0 < jq_target_container.find( '.' + button_container_class_name ).length ) {
                 jq_target_container = $();
             }
