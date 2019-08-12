@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.2.3
+// @version         0.1.2.4
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -630,6 +630,13 @@ function get_video_extension( video_url ) {
 
 
 function get_gif_video_url_from_playable_media( jq_target ) {
+    if ( is_react_twitter() ) {
+        var video_url = jq_target.find( 'video[src*="video.twimg.com/tweet_video/"]' ).attr( 'src' );
+        
+        if ( video_url && video_url.match( /\.mp4/ ) ) {
+            return video_url;
+        }
+    }
     // 動画GIFの背景画像 URL から MP4 の URL を割り出す
     // background-image:url('https://pbs.twimg.com/tweet_video_thumb/#VIDEO_ID#.jpg') => https://video.twimg.com/tweet_video/#VIDEO_ID#.mp4
     return GIF_VIDEO_URL_BASE.replace( '#VIDEO_ID#', jq_target.find( '.PlayableMedia-player' ).attr( 'style' ).match( /tweet_video_thumb\/([^.?]+)[.?]/ )[ 1 ] );
@@ -4329,6 +4336,7 @@ function add_media_button_to_tweet( jq_tweet ) {
         jq_action_list,
         jq_images,
         jq_playable_media,
+        jq_player,
         tweet_url,
         screen_name,
         timestamp_ms,
@@ -4377,15 +4385,16 @@ function add_media_button_to_tweet( jq_tweet ) {
                 return ( $( this ).parents( 'div[role="blockquote"]' ).length <= 0 ); // 引用ツイート中画像は対象としない
             } );
         
-        jq_playable_media = jq_tweet.find( 'div[data-testid="previewInterstitial"]' )
+        jq_playable_media = jq_tweet.find( 'div[data-testid="previewInterstitial"]' ) // ※動画を自動再生しない場合のみ存在する要素
             .filter( function ( index ) {
                 return ( $( this ).parents( 'div[role="blockquote"]' ).length <= 0 ); // 引用ツイート中画像は対象としない
             } )
             .addClass( 'PlayableMedia' );
         
         if ( 0 < jq_playable_media.length ) {
-            var jq_player = jq_playable_media.find( 'div[style*="background-image"]' ).addClass( 'PlayableMedia-player' ),
-                background_image = jq_player.css( 'background-image' );
+            jq_player = jq_playable_media.find( 'div[style*="background-image"]' ).addClass( 'PlayableMedia-player' );
+            
+            var background_image = jq_player.css( 'background-image' );
             
             if ( background_image ) {
                 if ( background_image.match( /tweet_video_thumb/ ) ) {
@@ -4404,6 +4413,25 @@ function add_media_button_to_tweet( jq_tweet ) {
             }
             else {
                 jq_playable_media.removeClass( 'PlayableMedia' );
+            }
+        }
+        else {
+            var jq_video = jq_tweet.find( 'video' )
+                    .filter( function ( index ) {
+                        return ( $( this ).parents( 'div[role="blockquote"]' ).length <= 0 ); // 引用ツイート中画像は対象としない
+                    } ),
+                video_url = jq_video.attr( 'src' );
+            
+            if ( video_url ) {
+                jq_playable_media = jq_player = jq_video.parents( 'div[role="button"]' ).addClass( 'PlayableMedia-player' );
+                jq_playable_media.addClass( 'PlayableMedia' );
+                
+                if ( video_url.match( /video\.twimg\.com\/tweet_video\/.*?\.mp4/ ) ) {
+                    jq_playable_media.addClass( 'PlayableMedia--gif' );
+                }
+                else {
+                    jq_playable_media.addClass( 'PlayableMedia--video' );
+                }
             }
         }
     }
@@ -5035,8 +5063,7 @@ function check_media_tweets( node ) {
         //    return ( 0 < jq_tweet.parents( 'div[data-testid="primaryColumn"]' ).length );
         //} );
         */
-        
-        jq_tweets = jq_node.find( 'div[data-testid="primaryColumn"] article[role="article"]:has(div[data-testid="tweet"]):has(div[aria-label] > img):not(:has(.' + SCRIPT_NAME + '_media_button))' );
+        jq_tweets = jq_node.find( 'div[data-testid="primaryColumn"] article[role="article"]:has(div[data-testid="tweet"]):has(div[aria-label]):not(:has(.' + SCRIPT_NAME + '_media_button))' );
     }
     else {
         var tweet_class_names = [ 'js-stream-tweet', 'tweet', 'js-tweet' ],
