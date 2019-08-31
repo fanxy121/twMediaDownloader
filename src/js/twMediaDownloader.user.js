@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.2.5
+// @version         0.1.2.6
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -689,7 +689,7 @@ function get_screen_name( url ) {
 
 function get_profile_name() {
     if ( is_react_twitter() ) {
-        return $( 'div[data-testid="primaryColumn"] h2[role="heading"] div[role="presentation"]' ).text().trim();
+        return $( 'div[data-testid="primaryColumn"] > div > div > div:first h2[role="heading"] > div[aria-haspopup="false"] span > span > span' ).text().trim();
     }
     else {
         return $( 'h1.ProfileHeaderCard-name a.ProfileHeaderCard-nameLink' ).text().trim();
@@ -4127,7 +4127,7 @@ var check_timeline_headers = ( function () {
             jq_button_container = $( '<div />' )
                 .css( {
                     'right' : '12px'
-                ,   'bottom' : '38px'
+                ,   'bottom' : '-14px'
                 } );
         }
         else {
@@ -4161,7 +4161,7 @@ var check_timeline_headers = ( function () {
         var jq_target_container = $();
         
         if ( is_react_twitter() ) {
-            jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div:first:has(h2[role="heading"] div[role="presentation"])' );
+            jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div:first:has(h2[role="heading"] > div[aria-haspopup="false"] span > span > span)' );
             if ( 0 < jq_target_container.find( '.' + button_container_class_name ).length ) {
                 jq_target_container = $();
             }
@@ -5080,7 +5080,13 @@ function check_media_tweets( node ) {
         //    return ( 0 < jq_tweet.parents( 'div[data-testid="primaryColumn"]' ).length );
         //} );
         */
-        jq_tweets = jq_node.find( 'div[data-testid="primaryColumn"] article[role="article"]:has(div[data-testid="tweet"]):has(div[aria-label]):not(:has(.' + SCRIPT_NAME + '_media_button))' );
+        jq_tweets = jq_node
+            .find( 'div[data-testid="primaryColumn"] article[role="article"]:has(div[data-testid="tweet"]):has(div[aria-label]):not(:has(.' + SCRIPT_NAME + '_media_button))' )
+            .filter( function ( index ) {
+                var jq_tweet = $( this );
+                
+                return ( jq_tweet.find( 'a.' + SCRIPT_NAME + '_tweet_profile' ).length <= 0 );
+            } );
     }
     else {
         var tweet_class_names = [ 'js-stream-tweet', 'tweet', 'js-tweet' ],
