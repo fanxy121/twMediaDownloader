@@ -4395,7 +4395,7 @@ function add_media_button_to_tweet( jq_tweet ) {
         }
         
         // ボタン挿入時には、画像の数が確定していない場合がある→クリック直後に取得
-        jq_images = jq_tweet.find( 'a[href*="/photo/"] div[aria-label] > img' )
+        jq_images = jq_tweet.find( 'div[aria-label] > img[src*="//pbs.twimg.com/media/"]' )
             .filter( function ( index ) {
                 return ( $( this ).parents( 'div[role="blockquote"]' ).length <= 0 ); // 引用ツイート中画像は対象としない
             } );
@@ -4554,7 +4554,7 @@ function add_media_button_to_tweet( jq_tweet ) {
             
             if ( is_react_twitter() ) {
                 // ボタン挿入時には、画像の数が確定していない場合がある→クリック直後に取得
-                jq_images = jq_tweet.find( 'a[href*="/photo/"] div[aria-label] > img' )
+                jq_images = jq_tweet.find( 'div[aria-label] > img[src*="//pbs.twimg.com/media/"]' )
                     .filter( function ( index ) {
                         return ( $( this ).parents( 'div[role="blockquote"]' ).length <= 0 ); // 引用ツイート中画像は対象としない
                     } )
