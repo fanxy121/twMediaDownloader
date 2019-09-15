@@ -5,7 +5,8 @@
 w.chrome = ( ( typeof browser != 'undefined' ) && browser.runtime ) ? browser : chrome;
 
 
-var DEBUG = false;
+var DEBUG = false,
+    CONTENT_TAB_INFOS = {};
 
 
 function log_debug() {
@@ -32,19 +33,60 @@ function get_values( name_list ) {
     
 } // end of get_values()
 
+/*
+//function reload_tabs() {
+//    chrome.tabs.query( {
+//        url : '*://*.twitter.com/*' // TODO: url で query() を呼ぶためには tabs permission が必要になる
+//    }, function ( result ) {
+//        result.forEach( function ( tab ) {
+//            if ( ! tab.url.match( /^https?:\/\/(?:(?:mobile)\.)?twitter\.com\// ) ) {
+//                return;
+//            }
+//            chrome.tabs.reload( tab.id );
+//        } );
+//    });
+//} // end of reload_tabs()
+*/
 
-function reload_tabs() {
-    chrome.tabs.query( {
-        url : '*://*.twitter.com/*'
-    }, function ( result ) {
-        result.forEach( function ( tab ) {
-            if ( ! tab.url.match( /^https?:\/\/(?:(?:mobile)\.)?twitter\.com\// ) ) {
+var reload_tabs = ( () => {
+    var reg_host = /([^.]+\.)?twitter\.com/,
+        
+        reload_tab = ( tab_info ) => {
+            log_debug( 'reload_tab():', tab_info );
+            var tab_id = tab_info.tab_id;
+            
+            chrome.tabs.sendMessage( tab_id, {
+                type : 'RELOAD_REQUEST',
+            }, {
+            }, ( response ) => {
+                log_debug( 'response', response );
+                if ( chrome.runtime.lastError || ( ! response ) ) {
+                    // タブが存在しないか、応答が無ければ chrome.runtime.lastError 発生→タブ情報を削除
+                    // ※chrome.runtime.lastErrorをチェックしないときは Console に "Unchecked runtime.lastError: No tab with id: xxxx." 表示
+                    delete CONTENT_TAB_INFOS[ tab_id ];
+                    log_debug( 'tab or content_script does not exist: tab_id=', tab_id, '=> removed:', tab_info, '=> remained:', CONTENT_TAB_INFOS );
+                }
+            } );
+        };
+    
+    return () => {
+        log_debug( 'reload_tabs():', CONTENT_TAB_INFOS );
+        Object.values( CONTENT_TAB_INFOS ).forEach( ( tab_info ) => {
+            log_debug( tab_info );
+            
+            try {
+                if ( ! reg_host.test( new URL( tab_info.url ).host ) ) {
+                    return;
+                }
+            }
+            catch ( error ) {
                 return;
             }
-            chrome.tabs.reload( tab.id );
+            
+            reload_tab( tab_info );
         } );
-    });
-} // end of reload_tabs()
+    };
+} )();
 
 w.reload_tabs = reload_tabs;
 
@@ -53,7 +95,8 @@ function on_message( message, sender, sendResponse ) {
     log_debug( '*** on_message():', message, sender );
     
     var type = message.type,
-        response = null;
+        response = null,
+        tab_id = sender.tab && sender.tab.id;
     
     switch ( type ) {
         case 'GET_OPTIONS':
@@ -83,6 +126,24 @@ function on_message( message, sender, sendResponse ) {
         
         case 'RELOAD_TABS':
             reload_tabs();
+            return true;
+        
+        case 'NOTIFICATION_ONLOAD' :
+            log_debug( 'NOTIFICATION_ONLOAD: tab_id', tab_id, message );
+            if ( tab_id ) {
+                CONTENT_TAB_INFOS[ tab_id ] = Object.assign( message.info, {
+                    tab_id : tab_id,
+                } );
+            }
+            log_debug( '=> CONTENT_TAB_INFOS', CONTENT_TAB_INFOS );
+            return true;
+        
+        case 'NOTIFICATION_ONUNLOAD' :
+            log_debug( 'NOTIFICATION_ONUNLOAD: tab_id', tab_id, message );
+            if ( tab_id ) {
+                delete CONTENT_TAB_INFOS[ tab_id ];
+            }
+            log_debug( '=> CONTENT_TAB_INFOS', CONTENT_TAB_INFOS );
             return true;
         
         default:
@@ -152,7 +213,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
             } );
         }
         
-        console.log( requestHeaders );
+        //console.log( requestHeaders );
         
         return ( ( requestHeaders !== undefined ) ? { requestHeaders : requestHeaders } : {} );
     }
