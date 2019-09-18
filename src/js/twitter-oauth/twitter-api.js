@@ -158,6 +158,47 @@ if ( ( typeof browser == 'undefined' ) && ( typeof window != 'undefined' ) ) {
     window.browser = ( typeof chrome != 'undefined' ) ? chrome : null;
 }
 
+var DEBUG = false,
+    SCRIPT_NAME = 'twitter-api';
+
+
+if ( typeof console.log.apply == 'undefined' ) {
+    // MS-Edge 拡張機能では console.log.apply 等が undefined
+    // → apply できるようにパッチをあてる
+    // ※参考：[javascript - console.log.apply not working in IE9 - Stack Overflow](https://stackoverflow.com/questions/5538972/console-log-apply-not-working-in-ie9)
+    
+    [ 'log', 'info', 'warn', 'error', 'assert', 'dir', 'clear', 'profile', 'profileEnd' ].forEach( function ( method ) {
+        console[ method ] = this.bind( console[ method ], console );
+    }, Function.prototype.call );
+    
+    console.log( 'note: console.log.apply is undefined => patched' );
+}
+
+
+function log_debug() {
+    if ( ! DEBUG ) {
+        return;
+    }
+    var arg_list = [ '[' + SCRIPT_NAME + ']', '(' + ( new Date().toISOString() ) + ')' ];
+    
+    console.log.apply( console, arg_list.concat( Array.from( arguments ) ) );
+} // end of log_debug()
+
+
+function log_info() {
+    var arg_list = [ '[' + SCRIPT_NAME + ']', '(' + ( new Date().toISOString() ) + ')' ];
+    
+    console.info.apply( console, arg_list.concat( Array.from( arguments ) ) );
+} // end of log_info()
+
+
+function log_error() {
+    var arg_list = [ '[' + SCRIPT_NAME + ']', '(' + ( new Date().toISOString() ) + ')' ];
+    
+    console.error.apply( console, arg_list.concat( Array.from( arguments ) ) );
+} // end of log_error()
+
+
 var set_values = ( function () {
         if ( browser &&  browser.storage ) {
             return function ( name_value_map, callback ) {
@@ -372,7 +413,7 @@ var set_values = ( function () {
             return new URL( url ).origin;
         }
         catch ( error ) {
-            console.error( 'get_origin()', url, error );
+            log_error( 'get_origin()', url, error );
             return 'https://api.twitter.com';
         }
     }; // end of get_origin()
@@ -539,7 +580,7 @@ var TemplateTwitterAPI = {
                                     popup_window.name = popup_window_name;
                                 }
                                 catch ( error ) {
-                                    console.error( 'popup window name is not changed: ', error );
+                                    log_error( 'popup window name is not changed: ', error );
                                 }
                                 
                                 popup_window.location.href = initial_popup_url;
@@ -548,14 +589,14 @@ var TemplateTwitterAPI = {
                             } )(),
                             
                             initial_timeout_timer_id = ( self.config.popup_initial_timeout && self.config.popup_healthcheck_interval ) ? setTimeout( function () {
-                                console.error( new Date().toISOString(), 'connection timeout' );
+                                log_error( new Date().toISOString(), 'connection timeout' );
                                 finish();
                             }, self.config.popup_initial_timeout ) : null,
                             
                             closecheck_timer_id = ( self.config.popup_closecheck_interval ) ? setInterval( function () {
                                 try {
                                     if ( popup_window.closed ) {
-                                        console.error( new Date().toISOString(), 'popup window closed' );
+                                        log_error( new Date().toISOString(), 'popup window closed' );
                                         finish();
                                         return;
                                     }
@@ -570,7 +611,7 @@ var TemplateTwitterAPI = {
                             
                             message_handler = function ( event ) {
                                 if ( ( event.origin != popup_origin_api ) && ( event.origin != popup_origin_login_verification ) && ( event.origin != popup_origin_callback ) ) {
-                                    console.error( new Date().toISOString(), 'origin error:', event.origin );
+                                    log_error( new Date().toISOString(), 'origin error:', event.origin );
                                     return;
                                 }
                                 
@@ -600,14 +641,14 @@ var TemplateTwitterAPI = {
                                         break;
                                     
                                     default :
-                                        console.error( new Date().toISOString(), 'message error:', message );
+                                        log_debug( new Date().toISOString(), 'message error:', message );
                                         return;
                                 }
                             },
                             
                             healthcheck_handler = function () {
                                 if ( healthcheck_counter == last_healthcheck_counter ) {
-                                    console.error( new Date().toISOString(), 'healthcheck timeout' );
+                                    log_error( new Date().toISOString(), 'healthcheck timeout' );
                                     finish();
                                     return;
                                 }
@@ -707,16 +748,27 @@ var TemplateTwitterAPI = {
         self.config.oauth_token = '';
         self.config.oauth_token_secret = '';
         
-        remove_values( [ 'oauth_token' + name_suffix, 'oauth_token_secret' + name_suffix, 'oauth_user_id' + name_suffix, 'oauth_screen_name' + name_suffix ] )
-        .done( function () {
-            if ( typeof callback == 'function' ) {
-                $deferred
-                .done( function () {
-                    callback();
-                } );
+        get_values( [
+            'oauth_screen_name',
+        ] )
+        .done ( ( cached_values ) => {
+            var remove_keys = [ 'oauth_token' + name_suffix, 'oauth_token_secret' + name_suffix, 'oauth_user_id' + name_suffix, 'oauth_screen_name' + name_suffix ];
+            
+            if ( cached_values.oauth_screen_name == self.config.screen_name ) {
+                remove_keys = remove_keys.concat( [ 'oauth_token', 'oauth_token_secret', 'oauth_user_id', 'oauth_screen_name' ] );
             }
             
-            $deferred.resolve();
+            remove_values( remove_keys )
+            .done( function () {
+                if ( typeof callback == 'function' ) {
+                    $deferred
+                    .done( function () {
+                        callback();
+                    } );
+                }
+                
+                $deferred.resolve();
+            } );
         } );
         
         return $promise;
@@ -729,8 +781,25 @@ var TemplateTwitterAPI = {
             $promise = $deferred.promise(),
             name_suffix = ( self.config.screen_name ) ? ( '.' + self.config.screen_name ) : '';
         
-        get_values( [ 'oauth_token' + name_suffix, 'oauth_token_secret' + name_suffix, 'oauth_user_id' + name_suffix, 'oauth_screen_name' + name_suffix ] )
+        get_values( [
+            'oauth_token' + name_suffix,
+            'oauth_token_secret' + name_suffix,
+            'oauth_user_id' + name_suffix,
+            'oauth_screen_name' + name_suffix,
+            'oauth_token',
+            'oauth_token_secret',
+            'oauth_user_id',
+            'oauth_screen_name',
+        ] )
         .done( function ( tokens ) {
+            if ( name_suffix && ( ! tokens[ 'oauth_screen_name' + name_suffix ] ) && ( tokens[ 'oauth_screen_name' ] == self.config.screen_name ) ) {
+                Object.assign( tokens, {
+                    [ 'oauth_token' + name_suffix ] : tokens[ 'oauth_token' ],
+                    [ 'oauth_token_secret' + name_suffix ] : tokens[ 'oauth_token_secret' ],
+                    [ 'oauth_user_id' + name_suffix ] : tokens[ 'oauth_user_id' ],
+                    [ 'oauth_screen_name' + name_suffix ] : tokens[ 'oauth_screen_name' ],
+                } );
+            }
             if ( typeof callback == 'function' ) {
                 $deferred
                 .done( function () {
@@ -825,7 +894,25 @@ var TemplateTwitterAPI = {
             return $promise;
         }
         
-        var name_suffix = ( self.config.screen_name ) ? ( '.' + self.config.screen_name ) : '';
+        var name_suffix = ( self.config.screen_name ) ? ( '.' + self.config.screen_name ) : '',
+            tokens_to_save = {
+                [ 'oauth_token' + name_suffix ] : tokens.oauth_token,
+                [ 'oauth_token_secret' + name_suffix ] : tokens.oauth_token_secret,
+                [ 'oauth_user_id' + name_suffix ] : tokens.user_id,
+                [ 'oauth_screen_name' + name_suffix ] : tokens.screen_name
+            },
+            name_suffix_to_save;
+        
+        if ( ! self.config.screen_name ) {
+            name_suffix_to_save = '.' + tokens.screen_name;
+            
+            Object.assign( tokens_to_save, {
+                [ 'oauth_token' + name_suffix_to_save ] : tokens.oauth_token,
+                [ 'oauth_token_secret' + name_suffix_to_save ] : tokens.oauth_token_secret,
+                [ 'oauth_user_id' + name_suffix_to_save ] : tokens.user_id,
+                [ 'oauth_screen_name' + name_suffix_to_save ] : tokens.screen_name
+            } );
+        }
         
         self.config.oauth_token = tokens.oauth_token;
         self.config.oauth_token_secret = tokens.oauth_token_secret;
@@ -835,12 +922,7 @@ var TemplateTwitterAPI = {
             screen_name : tokens.screen_name
         };
         
-        set_values( {
-            [ 'oauth_token' + name_suffix ] : tokens.oauth_token,
-            [ 'oauth_token_secret' + name_suffix ] : tokens.oauth_token_secret,
-            [ 'oauth_user_id' + name_suffix ] : tokens.user_id,
-            [ 'oauth_screen_name' + name_suffix ] : tokens.screen_name
-        } )
+        set_values( tokens_to_save )
         .done( function () {
             if ( typeof callback == 'function' ) {
                 $deferred.done( function () {
@@ -1118,7 +1200,7 @@ var TemplateTwitterAPI = {
         
         window.addEventListener( 'message', function ( event ) {
             if ( event.origin != parent_origin ) {
-                console.error( new Date().toISOString(), 'origin error:', event.origin );
+                log_error( new Date().toISOString(), 'origin error:', event.origin, event );
                 return;
             }
             
@@ -1136,7 +1218,7 @@ var TemplateTwitterAPI = {
                     break;
                 
                 default :
-                    console.error( new Date().toISOString(), 'message error:', message );
+                    log_debug( new Date().toISOString(), 'message error:', message, event );
                     return;
             }
         } );

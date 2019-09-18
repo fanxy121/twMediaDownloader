@@ -4,6 +4,10 @@
 
 w.chrome = ( ( typeof browser != 'undefined' ) && browser.runtime ) ? browser : chrome;
 
+if ( chrome.runtime.lastError ) {
+    console.log( '* chrome.runtime.lastError.message:', chrome.runtime.lastError.message );
+}
+
 
 function get_bool( value ) {
     if ( value === undefined ) {
