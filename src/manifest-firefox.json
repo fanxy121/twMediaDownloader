@@ -2,7 +2,7 @@
     "manifest_version" : 2
 ,   "name" : "__MSG_ext_title__"
 ,   "short_name" : "__MSG_ext_short_name__"
-,   "version" : "0.1.2.701"
+,   "version" : "0.1.2.801"
 ,   "description" : "__MSG_ext_description__"
 ,   "author" : "furyu"
 ,   "default_locale" : "en"

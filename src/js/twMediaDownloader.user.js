@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.2.7
+// @version         0.1.2.8
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -649,7 +649,8 @@ var get_logined_screen_name = ( () => {
             $user_link;
         
         if ( is_react_twitter() ) {
-            $user_link = $( 'nav[role="navigation"] > a[role="link"]:has(img[src*="profile_images/"])' ); // 遅い
+            //$user_link = $( 'nav[role="navigation"] > a[role="link"]:has(img[src*="profile_images/"])' ); // 遅い→ :has() を未使用にすることで効果大
+            $user_link = $( 'nav[role="navigation"] > a[role="link"]' ).filter( function () {return ( 0 < $( this ).find( 'img[src*="profile_images/"]' ).length );} );
         }
         else {
             $user_link = $( '#user-dropdown .current-user a[data-nav="view_profile"]' );
@@ -4101,7 +4102,8 @@ var check_timeline_headers = ( function () {
         var jq_target_container = $();
         
         if ( is_react_twitter() ) {
-            jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div:first:has(h2[role="heading"] > div[aria-haspopup="false"] span > span > span)' );
+            //jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div:first:has(h2[role="heading"] > div[aria-haspopup="false"] span > span > span)' );
+            jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div' ).first().filter( function () {return ( 0 < $( this ).find( 'h2[role="heading"] > div[aria-haspopup="false"] span > span > span' ).length );} );
             if ( 0 < jq_target_container.find( '.' + button_container_class_name ).length ) {
                 jq_target_container = $();
             }
@@ -4300,7 +4302,8 @@ function add_media_button_to_tweet( jq_tweet ) {
         media_number = 0;
     
     if ( is_react_twitter() ) {
-        tweet_url = jq_tweet.find( 'a[role="link"][href^="/"][href*="/status/"]:has(time)' ).attr( 'href' );
+        //tweet_url = jq_tweet.find( 'a[role="link"][href^="/"][href*="/status/"]:has(time)' ).attr( 'href' );
+        tweet_url = jq_tweet.find( 'a[role="link"][href^="/"][href*="/status/"]' ).filter( function () {return ( 0 < $( this ).find( 'time' ).length );} ).attr( 'href' );
         jq_tweet_time = jq_tweet.find( 'a[role="link"] time[datetime]' );
             
         if ( ! tweet_url ) {
@@ -4329,7 +4332,8 @@ function add_media_button_to_tweet( jq_tweet ) {
             }
         }
         
-        jq_action_list = jq_tweet.find( 'div[dir="auto"]:has(>a[role="link"][href*="/help.twitter.com/"])' );
+        //jq_action_list = jq_tweet.find( 'div[dir="auto"]:has(>a[role="link"][href*="/help.twitter.com/"])' ); // →遅い→ :has() を未使用にすることで効果大
+        jq_action_list = jq_tweet.find( 'div[dir="auto"]' ).filter( function () {return ( 0 < $( this ).children( 'a[role="link"][href*="/help.twitter.com/"]' ).length );} );
         if ( jq_action_list.length <= 0 ) {
             jq_action_list = jq_tweet.find( 'div[role="group"]' );
         }
@@ -4862,8 +4866,9 @@ function add_media_button_to_tweet( jq_tweet ) {
                     child_window;
                 
                 if ( is_open_image_mode( event ) ) {
-                    // ポップアップブロック対策にダミー画像を開いておく
-                    child_window = w.open( LOADING_IMAGE_URL );
+                    // ポップアップブロック対策
+                    //child_window = w.open( 'about:blank', '_blank' ); // 空ページを開いておく
+                    child_window = w.open( LOADING_IMAGE_URL, '_blank' ); // ダミー画像を開いておく
                 }
                 
                 /*
@@ -4930,8 +4935,9 @@ function add_media_button_to_tweet( jq_tweet ) {
                     child_window;
                 
                 if ( is_open_image_mode( event ) ) {
-                    // ポップアップブロック対策にダミー画像を開いておく
-                    child_window = w.open( LOADING_IMAGE_URL );
+                    // ポップアップブロック対策
+                    //child_window = w.open( 'about:blank', '_blank' ); // 空ページを開いておく
+                    child_window = w.open( LOADING_IMAGE_URL, '_blank' ); // ダミー画像を開いておく
                 }
                 
                 /*
@@ -5055,7 +5061,13 @@ function check_media_tweets( node ) {
         //} );
         */
         jq_tweets = jq_node
-            .find( 'div[data-testid="primaryColumn"] article[role="article"]:has(div[data-testid="tweet"]):has(div[aria-label]):not(:has(.' + SCRIPT_NAME + '_media_button))' )
+            //.find( 'div[data-testid="primaryColumn"] article[role="article"]:has(div[data-testid="tweet"]):has(div[aria-label]):not(:has(.' + SCRIPT_NAME + '_media_button))' ) // → :has() を使わなくしてもそれ程パフォーマンスは変わらない
+            .find( 'div[data-testid="primaryColumn"] article[role="article"]' )
+            .filter( function () {
+                var $tweet = $( this );
+                
+                return ( ( 0 < $tweet.find( 'div[data-testid="tweet"]' ).length ) && ( 0 < $tweet.find( 'div[aria-label]' ).length ) && ( $tweet.find( '.' + SCRIPT_NAME + '_media_button' ).length <= 0 ) );
+            } )
             .filter( function ( index ) {
                 var jq_tweet = $( this );
                 
@@ -5089,7 +5101,7 @@ function check_media_tweets( node ) {
         
         return add_media_button_to_tweet( jq_tweet );
     } );
-
+    
     if ( 0 < jq_tweets.length ) log_debug( 'check_media_tweets():', jq_tweets.length );
     
     return ( 0 < jq_tweets.length );
