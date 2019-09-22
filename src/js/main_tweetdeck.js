@@ -90,7 +90,8 @@ var LANGUAGE = ( () => {
     
     DOMAIN_PREFIX = location.hostname.match( /^(.+\.)?twitter\.com$/ )[ 1 ] || '',
     
-    LOADING_IMAGE_URL = 'https://abs.twimg.com/a/1460504487/img/t1/spinner-rosetta-gray-32x32.gif',
+    //LOADING_IMAGE_URL = 'https://abs.twimg.com/a/1460504487/img/t1/spinner-rosetta-gray-32x32.gif',
+    LOADING_IMAGE_URL = 'https://tweetdeck.twitter.com/favicon.ico',
     
     MEDIA_BUTTON_CLASS = SCRIPT_NAME + '_media_button',
     
@@ -755,15 +756,22 @@ var add_media_button_to_tweet = ( () => {
         }, // end of get_tweet_id_info()
         
         get_thumbnail_url = ( () => {
-            var reg_url = /url\("?(.+?)"?\)/;
+            var reg_url = /url\("?(.+?)"?\)/,
+                reg_twitter_image = /^https?:\/\/(?:[^.]+\.)?(?:twitter|twimg)\.com/;
             
             return ( $element ) => {
+                var thumbnail_url = null;
+                
                 try {
-                    return $element.css( 'background-image' ).match( reg_url )[ 1 ];
+                    thumbnail_url = $element.css( 'background-image' ).match( reg_url )[ 1 ];
+                    if ( ! reg_twitter_image.test( thumbnail_url ) ) {
+                        thumbnail_url = null;
+                    }
                 }
                 catch ( error ) {
-                    return null;
                 }
+                
+                return thumbnail_url;
             };
         } )(), // end of get_thumbnail_url()
         
@@ -835,6 +843,10 @@ var add_media_button_to_tweet = ( () => {
                                 }
                                 media_urls.push( media_url );
                             } );
+                            
+                            if ( thumbnail_urls.length <= 0 ) {
+                                media_type = 'none';
+                            }
                             break;
                         
                         case 'gif' :
@@ -845,6 +857,7 @@ var add_media_button_to_tweet = ( () => {
                                 if ( ! thumbnail_url ) {
                                     return;
                                 }
+                                
                                 thumbnail_urls.push( thumbnail_url );
                                 
                                 var media_url = get_gif_video_url_from_thumbnail_url( thumbnail_url );
@@ -854,6 +867,10 @@ var add_media_button_to_tweet = ( () => {
                                 }
                                 media_urls.push( media_url );
                             } );
+                            
+                            if ( thumbnail_urls.length <= 0 ) {
+                                media_type = 'none';
+                            }
                             break;
                         
                         case 'video' :
@@ -864,8 +881,15 @@ var add_media_button_to_tweet = ( () => {
                                 if ( ! thumbnail_url ) {
                                     return;
                                 }
+                                
                                 thumbnail_urls.push( thumbnail_url );
                             } );
+                            
+                            if ( thumbnail_urls.length <= 0 ) {
+                                if ( $media_container.find( 'iframe.js-media-native-video' ).length <= 0 ) {
+                                    media_type = 'none';
+                                }
+                            }
                             break;
                     }
                     
@@ -1098,6 +1122,10 @@ var add_media_button_to_tweet = ( () => {
                     var media_urls = tweet_info.media_info.media_urls,
                         
                         child_window = null,
+                        thumbnail_urls = tweet_info.media_info.thumbnail_urls,
+                        //temporary_url = ( 0 < thumbnail_urls.length ) ? thumbnail_urls[ 0 ] : LOADING_IMAGE_URL,
+                        // TODO: https://pbs.twimg.com/ext_tw_video_thumb/* → https://video.twimg.com/ext_tw_video/* の replace() がうまくいかない
+                        temporary_url = LOADING_IMAGE_URL,
                         
                         finish = () => {
                             if ( media_urls.length <= 0 ) {
@@ -1166,16 +1194,15 @@ var add_media_button_to_tweet = ( () => {
                         return;
                     }
                     
-                    var thumbnail_urls = tweet_info.media_info.thumbnail_urls,
-                        temporary_url = ( 0 < thumbnail_urls.length ) ? thumbnail_urls[ 0 ] : LOADING_IMAGE_URL;
-                    
                     if ( is_open_image_mode( event ) ) {
                         child_window = w.open( temporary_url, '_blank' );
                     }
                     
                     fetch_tweet_video_url( tweet_info.id )
                     .then( ( video_url ) => {
-                        media_urls.push( video_url );
+                        if ( video_url ) {
+                            media_urls.push( video_url );
+                        }
                         finish();
                     } )
                     .catch( ( error ) => {
