@@ -74,4 +74,7 @@
 ,   "USER_AUTH_REQUIRED" : {
         "message" : "ユーザー認証が必要"
     }
+,   "ENABLED_ON_TWEETDECK" : {
+        "message" : "TweetDeck での動作（ダウンロードボタンのみ）"
+    }
 }

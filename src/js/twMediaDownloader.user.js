@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.2.8
+// @version         0.1.2.9
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -200,7 +200,12 @@ var LANGUAGE = ( function () {
             }
         }
     } )(),
-    IS_FIREFOX = ( 0 <= w.navigator.userAgent.toLowerCase().indexOf( 'firefox' ) ),
+    
+    USERAGENT =  w.navigator.userAgent.toLowerCase(),
+    PLATFORM = w.navigator.platform.toLowerCase(),
+    IS_FIREFOX = ( 0 <= USERAGENT.indexOf( 'firefox' ) ),
+    IS_MAC = ( 0 <= PLATFORM.indexOf( 'mac' ) ),
+    
     //BASE64_BLOB_THRESHOLD = 30000000, // Data URL(base64) → Blob URL 切替の閾値(Byte) (Firefox用)(TODO: 値は要調整)
     BASE64_BLOB_THRESHOLD = 0, // Data URL(base64) → Blob URL 切替の閾値(Byte) (Firefox用)(TODO: 値は要調整)
     // TODO: Firefox の場合、Blob URL だと警告が出る場合がある・その一方、Data URL 形式だと大きいサイズはダウンロード不可
@@ -215,6 +220,18 @@ var LANGUAGE = ( function () {
     GIF_VIDEO_URL_BASE = 'https://video.twimg.com/tweet_video/#VIDEO_ID#.mp4',
     
     LOADING_IMAGE_URL = 'https://abs.twimg.com/a/1460504487/img/t1/spinner-rosetta-gray-32x32.gif',
+    
+    TEMPORARY_PAGE_URL = ( () => {
+        // ポップアップブロック対策に一時的に読み込むページのURLを取得
+        // ※なるべく軽いページが望ましい
+        // ※非同期で設定しているが、ユーザーがアクションを起こすまでには読み込まれているだろうことを期待
+        var test_url = new URL( '/favicon.ico?_temporary_page=true', d.baseURI ).href;
+        
+        fetch( test_url ).then( ( response ) => {
+            TEMPORARY_PAGE_URL = test_url;
+        } );
+        return null;
+    } )(),
     
     limit_tweet_number = OPTIONS.DEFAULT_LIMIT_TWEET_NUMBER,
     support_image = false,
@@ -1126,7 +1143,7 @@ var [
                     ];
                 } )(),
                 
-                user_specified_window = window.open( new URL( is_react_twitter() ? '/home' : '/', d.baseURI ).href, OAUTH_POPUP_WINDOW_NAME, popup_window_option ),
+                user_specified_window = window.open( ( TEMPORARY_PAGE_URL || new URL( is_react_twitter() ? '/home' : '/', d.baseURI ).href ), OAUTH_POPUP_WINDOW_NAME, popup_window_option ),
                 // 非同期にウィンドウを開くと、ポップアップブロックが働いてしまうため、ユーザーアクションの直後に予めウィンドウを開いておく
                 // ※ 第一引数(URL) を 'about:blank' にすると、Firefox では window.name が変更できない（『DOMException: "Permission denied to access property "name" on cross-origin object"』発生）
                 
@@ -4434,8 +4451,8 @@ function add_media_button_to_tweet( jq_tweet ) {
         jq_media_button_container = $( '<div><button/></div>' )
             .addClass( 'ProfileTweet-action ' + media_button_class_name )
             .addClass( 'js-tooltip' )
-            //.attr( 'data-original-title', 'Click: ' + tooltip_title + ' / \n[Alt]+Click: ' + tooltip_alt_title )
-            .attr( 'title', 'Click: ' + tooltip_title + ' / \n[Alt]+Click: ' + tooltip_alt_title )
+            //.attr( 'data-original-title', 'Click: ' + tooltip_title + ' / \n' + ( IS_MAC ? '[option]' : '[Alt]' ) + '+Click: ' + tooltip_alt_title )
+            .attr( 'title', 'Click: ' + tooltip_title + ' / \n' + ( IS_MAC ? '[option]' : '[Alt]' ) + '+Click: ' + tooltip_alt_title )
             .attr( 'data-media-number', media_number )
             .css( {
                 'display' : 'none'
@@ -5126,6 +5143,16 @@ function update_display_mode() {
 } // end of update_display_mode()
 
 
+var is_primary_column_ready = () => {
+    if ( $( 'div[data-testid="primaryColumn"]' ).length <= 0 ) {
+        return false;
+    }
+    is_primary_column_ready = () => true;
+    
+    return true;
+}; // end of is_primary_column_ready()
+
+
 function start_mutation_observer() {
     new MutationObserver( function ( records ) {
         log_debug( '*** MutationObserver ***', records );
@@ -5136,6 +5163,10 @@ function start_mutation_observer() {
         if ( is_react_twitter() ) {
             // TODO: React版 Twitter の場合、要素ごとの処理を行うと取りこぼしが出てしまう
             // → 追加要素毎の処理を止め、まとめてチェック
+            if ( ! is_primary_column_ready() ) {
+                return;
+            }
+            
             if ( OPTIONS.IMAGE_DOWNLOAD_LINK || OPTIONS.VIDEO_DOWNLOAD_LINK ) {
                 check_media_tweets( d.body );
             }

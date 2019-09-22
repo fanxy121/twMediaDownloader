@@ -74,4 +74,7 @@
 ,   "USER_AUTH_REQUIRED" : {
         "message" : "User authentication required"
     }
+,   "ENABLED_ON_TWEETDECK" : {
+        "message" : "On TweetDeck (Download Buttons only)"
+    }
 }

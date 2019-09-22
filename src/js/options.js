@@ -44,6 +44,7 @@ $( async function () {
         ,   { key : 'ENABLE_ZIPREQUEST', val : true }
         ,   { key : 'ENABLE_FILTER', val : true }
         ,   { key : 'ENABLE_VIDEO_DOWNLOAD', val : true }
+        ,   { key : 'ENABLED_ON_TWEETDECK', val : true }
         ],
         
         INT_KV_LIST = [

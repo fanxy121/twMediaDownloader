@@ -122,6 +122,7 @@ var twMediaDownloader_chrome_init = ( function() {
         ,   DOWNLOAD_SIZE_LIMIT_MB : get_int
         ,   ENABLE_VIDEO_DOWNLOAD : get_bool
         ,   INCOGNITO_MODE : get_bool
+        ,   ENABLED_ON_TWEETDECK : get_bool
         };
     
     return get_init_function( 'GET_OPTIONS', option_name_to_function_map );
