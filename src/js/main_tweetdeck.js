@@ -94,6 +94,7 @@ var LANGUAGE = ( () => {
     LOADING_IMAGE_URL = 'https://tweetdeck.twitter.com/favicon.ico',
     
     MEDIA_BUTTON_CLASS = SCRIPT_NAME + '_media_button',
+    TOUCHED_CLASS = SCRIPT_NAME + '-touched',
     
     limit_tweet_number = OPTIONS.DEFAULT_LIMIT_TWEET_NUMBER,
     support_image = false,
@@ -602,10 +603,7 @@ var add_media_button_to_tweet = ( () => {
             
             values.id = tweet_id;
             
-            var tweet_info = tweet_info_map[ tweet_id ] = tweet_info_map[ tweet_id ] || {
-                    rt_info_map : {},
-                    like_info_map : {},
-                };
+            var tweet_info = tweet_info_map[ tweet_id ] = tweet_info_map[ tweet_id ] || {};
             
             Object.assign( tweet_info, values );
             
@@ -614,22 +612,25 @@ var add_media_button_to_tweet = ( () => {
         
         update_reaction_info = ( $tweet ) => {
             var data_tweet_id = $tweet.attr( 'data-tweet-id' ) || '',
-                data_key = $tweet.attr( 'data-key' ) || '';
+                reaction_key = $tweet.attr( 'data-key' ) || '';
             
-            if ( data_tweet_id == data_key ) {
+            if ( data_tweet_id == reaction_key ) {
                 return {};
             }
             
-            var existing_reaction_info = get_stored_reaction_info( data_key );
+            /*
+            //var existing_reaction_info = get_stored_reaction_info( reaction_key );
+            //
+            //if ( existing_reaction_info ) {
+            //    return;
+            //}
+            // ※ DM (archive[data-key^="conversation"]) の場合、同 data-key で上書きされる場合がある
+            */
             
-            if ( existing_reaction_info ) {
-                return;
-            }
-            
-            var retweet_id = ( data_key.match( /^(\d+)$/ ) || [ 0, '' ] )[ 1 ],
-                is_retweet = !! ( retweet_id ),
-                is_like = /^favorite_/.test( data_key ),
-                is_dm = /^conversation-/.test( data_key ),
+            var retweet_id = ( reaction_key.match( /^(\d+)$/ ) || [ 0, '' ] )[ 1 ],
+                is_retweet = ( !! ( retweet_id ) ) || /^retweet/.test( reaction_key ),
+                is_like = /^favorite/.test( reaction_key ),
+                is_dm = /^conversation/.test( reaction_key ),
                 
                 reaction_name = ( () => {
                     if ( is_retweet ) {
@@ -664,10 +665,27 @@ var add_media_button_to_tweet = ( () => {
             }
             
             var reacter_screen_name = ( $user_link.attr( 'href' ) || '/' ).match( /\/([^\/]*)$/ )[ 1 ],
-                reacted_timestamp_ms = 1 * ( $time.attr( 'data-time' ) || new Date().getTime() ),
+                reacted_timestamp_ms = ( () => {
+                    var reacted_timestamp_ms = $time.attr( 'data-time' ) || '',
+                        reacted_date;
+                    
+                    if ( reacted_timestamp_ms ) {
+                        reacted_timestamp_ms = 1 * reacted_timestamp_ms;
+                    }
+                    else {
+                        if ( retweet_id ) {
+                            reacted_date = tweet_id_to_date( retweet_id );
+                            
+                            if ( reacted_date ) {
+                                reacted_timestamp_ms = reacted_date.getTime();
+                            }
+                        }
+                    }
+                    return reacted_timestamp_ms;
+                } )(),
                 
-                reaction_info = reaction_info_map[ data_key ] = {
-                    key : data_key,
+                reaction_info = reaction_info_map[ reaction_key ] = {
+                    key : reaction_key,
                     reaction_name : reaction_name,
                     id : retweet_id,
                     reacted_id : data_tweet_id,
@@ -680,10 +698,7 @@ var add_media_button_to_tweet = ( () => {
             }
             
             var reacted_tweet_info = update_tweet_info( data_tweet_id ),
-                reaction_tweet_info = ( is_retweet ) ? update_tweet_info( retweet_id, reaction_info ) : {},
-                info_map = ( is_retweet ) ? reacted_tweet_info.rt_info_map : reacted_tweet_info.like_info_map;
-            
-            info_map[ reacter_screen_name ] = reaction_info;
+                reaction_tweet_info = ( retweet_id ) ? update_tweet_info( retweet_id, reaction_info ) : {};
             
             return reaction_info;
         }, // end of update_reaction_info()
@@ -756,19 +771,29 @@ var add_media_button_to_tweet = ( () => {
         }, // end of get_tweet_id_info()
         
         get_thumbnail_url = ( () => {
-            var reg_url = /url\("?(.+?)"?\)/,
-                reg_twitter_image = /^https?:\/\/(?:[^.]+\.)?(?:twitter|twimg)\.com/;
+            var reg_url = /url\("?(.*?)"?\)/,
+                reg_twitter_image = /^https?:\/\/(?:[^.]+\.)?twimg\.com\/.+/;
             
             return ( $element ) => {
-                var thumbnail_url = null;
+                var thumbnail_url = null,
+                    background_image;
                 
                 try {
-                    thumbnail_url = $element.css( 'background-image' ).match( reg_url )[ 1 ];
-                    if ( ! reg_twitter_image.test( thumbnail_url ) ) {
+                    //background_image = $element.css( 'background-image' ); // style="background-image: url()" のとき、'url("https://tweetdeck.twitter.com/")' が返されてしまう
+                    background_image = $element.get( 0 ).style.backgroundImage;
+                    thumbnail_url = background_image.match( reg_url )[ 1 ].trim();
+                    
+                    if ( ! thumbnail_url ) {
+                        log_info( '* get_thumbnail_url() thumbnail-URL is empty * background-image:', background_image );
+                        // TODO: GIF動画などで、タイミングによっては style="background-image: url()" となるケース有り
+                        thumbnail_url = LOADING_IMAGE_URL;
+                    }
+                    else if ( ! reg_twitter_image.test( thumbnail_url ) ) {
                         thumbnail_url = null;
                     }
                 }
                 catch ( error ) {
+                    log_info( '* get_thumbnail_url()', error, $element );
                 }
                 
                 return thumbnail_url;
@@ -852,7 +877,7 @@ var add_media_button_to_tweet = ( () => {
                         case 'gif' :
                             $media_container.find( '.js-media-gif-container, a.js-media-image-link[rel="mediaPreview"]' ).each( function () {
                                 var $element = $( this ),
-                                    thumbnail_url = get_thumbnail_url( $element );
+                                    thumbnail_url = get_thumbnail_url( $element, tweet_id );
                                 
                                 if ( ! thumbnail_url ) {
                                     return;
@@ -933,8 +958,10 @@ var add_media_button_to_tweet = ( () => {
             var tweet_id = $tweet.attr( 'data-tweet-id' ),
                 tweet_info = get_stored_tweet_info( tweet_id );
             
+            $tweet.addClass( TOUCHED_CLASS );
+            
             if ( ! tweet_info ) {
-                return;
+                return false;
             }
             
             var is_tweet_detail = ( 0 < $tweet.find( '.tweet-detail' ).length ),
@@ -976,10 +1003,6 @@ var add_media_button_to_tweet = ( () => {
                     
                     return $media_button;
                 } )(),
-                
-                update_tweet_info = () => {
-                    return {};
-                },
                 
                 on_click_image = ( tweet_info, event ) => {
                     var media_urls = tweet_info.media_info.media_urls;
@@ -1064,13 +1087,24 @@ var add_media_button_to_tweet = ( () => {
                 },
                 
                 on_click_gif = ( tweet_info, event ) => {
-                    var media_urls = tweet_info.media_info.media_urls;
+                    var media_urls = tweet_info.media_info.media_urls,
+                        thumbnail_url,
+                        media_url;
                     
                     if ( media_urls.length <= 0 ) {
-                       return;
+                        thumbnail_url = get_thumbnail_url( $media_container.find( '.js-media-gif-container, a.js-media-image-link[rel="mediaPreview"]' ).first() );
+                        if ( ! thumbnail_url ) {
+                            return;
+                        }
+                        media_url = get_gif_video_url_from_thumbnail_url( thumbnail_url );
+                        
+                        if ( ! media_url ) {
+                            return;
+                        }
+                        media_urls.push( media_url );
                     }
                     
-                    var media_url = media_urls[ 0 ];
+                    media_url = media_urls[ 0 ];
                     
                     if ( is_open_image_mode( event ) ) {
                         w.open( media_url, '_blank' );
@@ -1244,6 +1278,8 @@ var add_media_button_to_tweet = ( () => {
                 $menu_container = $footer.find( 'ul.tweet-actions' );
                 $menu_container.append( $media_button_container );
             }
+            
+            return true;
         }; // end of add_media_button_to_tweet()
     
     return add_media_button_to_tweet;
@@ -1257,7 +1293,9 @@ function check_media_tweets( node ) {
     
     var $node = $( node ),
         $tweets = $( 'article[data-tweet-id]' ).filter( function () {
-            return ( $( this ).find( '.' + MEDIA_BUTTON_CLASS ).length <= 0 );
+            var $tweet = $( this );
+            
+            return ( ( ! $tweet.hasClass( TOUCHED_CLASS ) ) && ( $tweet.find( '.' + MEDIA_BUTTON_CLASS ).length <= 0 ) );
         } );
     
     $tweets = $tweets.filter( function ( index ) {
