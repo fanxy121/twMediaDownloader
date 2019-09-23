@@ -5,7 +5,8 @@
 w.chrome = ( ( typeof browser != 'undefined' ) && browser.runtime ) ? browser : chrome;
 
 
-var DEBUG = false,
+var SCRIPT_NAME = 'twMediaDownloader',
+    DEBUG = false,
     CONTENT_TAB_INFOS = {};
 
 
@@ -97,6 +98,67 @@ var reload_tabs = ( () => {
 w.reload_tabs = reload_tabs;
 
 
+var request_tab_sorting = ( () => {
+    var tab_ids_map = {},
+        callback_map = {},
+        
+        start_tab_sorting = ( request_id, tab_ids, total ) => {
+            var moved_counter = 0,
+                tab_id,
+                
+                on_moved = ( tab_id, sort_index ) => {
+                    moved_counter ++;
+                    
+                    if ( moved_counter < total ) {
+                        return;
+                    }
+                    
+                    chrome.tabs.update( tab_ids[ 0 ], {
+                        active : true,
+                    }, ( tab ) => {
+                        var tab_ids = tab_ids_map[ request_id ];
+                        
+                        Object.values( tab_ids ).forEach( ( tab_id ) => {
+                            var callback = callback_map[ tab_id ];
+                            
+                            if ( typeof callback == 'function' ) {
+                                callback();
+                            }
+                            delete callback_map[ tab_id ];
+                        } );
+                        
+                        delete tab_ids_map[ request_id ];
+                    } );
+                },
+                
+                move_tab_to_last = ( tab_id, sort_index ) => {
+                    chrome.tabs.move( tab_id, {
+                        index : -1,
+                    }, ( tab ) => {
+                        on_moved( tab_id, sort_index );
+                    } );
+                };
+            
+            Object.keys( tab_ids ).sort().forEach( ( sort_index ) => {
+                move_tab_to_last( tab_ids[ sort_index ], sort_index );
+            } );
+        };
+        
+    return ( tab_id, request_id, total, sort_index, callback ) => {
+        var tab_ids = tab_ids_map[ request_id ] = tab_ids_map[ request_id ] || {};
+        
+        tab_ids[ sort_index ] = tab_id;
+        callback_map[ tab_id ] = callback;
+        
+        if ( Object.keys( tab_ids ).length < total ) {
+            return;
+        }
+        
+        start_tab_sorting( request_id, tab_ids, total );
+    };
+} )(); // end of request_tab_sorting()
+
+
 function on_message( message, sender, sendResponse ) {
     log_debug( '*** on_message():', message, sender );
     
@@ -150,6 +212,17 @@ function on_message( message, sender, sendResponse ) {
                 delete CONTENT_TAB_INFOS[ tab_id ];
             }
             log_debug( '=> CONTENT_TAB_INFOS', CONTENT_TAB_INFOS );
+            return true;
+        
+        case 'TAB_SORT_REQUEST' :
+            log_debug( 'TAB_SORT_REQUEST: tab_id', tab_id, message );
+            if ( tab_id ) {
+                request_tab_sorting( tab_id, message.request_id, message.total, message.sort_index, () => {
+                    sendResponse( {
+                        result : 'OK',
+                    } );
+                } );
+            }
             return true;
         
         case 'FETCH_JSON' :

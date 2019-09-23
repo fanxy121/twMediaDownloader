@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.2.9
+// @version         0.1.2.10
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -4500,12 +4500,18 @@ function add_media_button_to_tweet( jq_tweet ) {
                 var jq_image = $( this ),
                     image_url = get_img_url_orig( jq_image.attr( 'src' ) );
                 
-                image_urls.unshift( image_url );
+                //image_urls.unshift( image_url );
+                image_urls.push( image_url );
             } );
             
-            image_urls.forEach( function ( image_url ) {
-                w.open( image_url );
-            } );
+            if ( typeof extension_functions != 'undefined' ) {
+                extension_functions.open_multi_tabs( image_urls );
+            }
+            else {
+                image_urls.reverse().forEach( function ( image_url ) {
+                    w.open( image_url );
+                } );
+            }
         } // end of open_images()
         
         

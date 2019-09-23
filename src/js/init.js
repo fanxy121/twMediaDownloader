@@ -8,6 +8,8 @@ if ( chrome.runtime.lastError ) {
     console.log( '* chrome.runtime.lastError.message:', chrome.runtime.lastError.message );
 }
 
+var SCRIPT_NAME = 'twMediaDownloader';
+
 
 function get_bool( value ) {
     if ( value === undefined ) {
@@ -129,6 +131,52 @@ var twMediaDownloader_chrome_init = ( function() {
 } )(); // end of twMediaDownloader_chrome_init()
 
 
+var extension_functions = ( () => {
+    var reg_sort_index = new RegExp( '^request=tab_sorting&script_name=' + SCRIPT_NAME + '&request_id=(\\d+)&total=(\\d+)&sort_index=(\\d+)' ),
+        
+        open_multi_tabs = ( urls ) => {
+            var request_id = '' + new Date().getTime(),
+                window_name_prefix = 'request=tab_sorting&script_name=' + SCRIPT_NAME + '&request_id=' + request_id + '&total=' + urls.length + '&sort_index=';
+            
+            urls.forEach( ( url, sort_index ) => {
+                w.open( url, window_name_prefix + sort_index );
+            } );
+        }, // end of open_multi_tabs()
+        
+        request_tab_sorting = () => {
+            var reg_result = ( w.name || '' ).match( reg_sort_index );
+            
+            if ( ! reg_result ) {
+                return;
+            }
+            
+            var request_id = reg_result[ 1 ],
+                total = reg_result[ 2 ],
+                sort_index = reg_result[ 3 ];
+            
+            chrome.runtime.sendMessage( {
+                type : 'TAB_SORT_REQUEST',
+                request_id : request_id,
+                total : total,
+                sort_index : sort_index,
+            }, function ( response ) {
+                //console.log( 'request_tab_sorting() response:', response );
+            } );
+            
+            try {
+                w.name = '';
+            }
+            catch ( error ) {
+            }
+        }; // end of request_tab_sorting()
+    
+    return {
+        open_multi_tabs : open_multi_tabs,
+        request_tab_sorting : request_tab_sorting,
+    };
+} )(); // end of extension_functions
+
+
 if ( ( typeof content != 'undefined' ) && ( typeof content.XMLHttpRequest == 'function' ) ) {
     jQuery.ajaxSetup( {
         xhr : function () {
@@ -161,7 +209,6 @@ chrome.runtime.sendMessage( {
     */
 } );
 
-
 chrome.runtime.onMessage.addListener( function ( message, sender, sendResponse ) {
     switch ( message.type )  {
         case 'RELOAD_REQUEST' :
@@ -177,11 +224,16 @@ chrome.runtime.onMessage.addListener( function ( message, sender, sendResponse )
     return true;
 } );
 
+if ( /^https?:\/\/pbs\.twimg\.com\/media\//.test( location.href ) ) {
+    // 複数画像を一度に開いたときにタブを並び替え
+    extension_functions.request_tab_sorting();
+}
 
 w.is_chrome_extension = true;
 w.twMediaDownloader_chrome_init = twMediaDownloader_chrome_init;
 w.async_get_values = async_get_values;
 w.async_set_values = async_set_values;
+w.extension_functions = extension_functions;
 
 } )( window, document );
 

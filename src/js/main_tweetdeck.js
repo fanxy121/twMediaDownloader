@@ -1008,9 +1008,12 @@ var add_media_button_to_tweet = ( () => {
                     var media_urls = tweet_info.media_info.media_urls;
                     
                     if ( is_open_image_mode( event ) ) {
-                        media_urls.slice( 0 ).reverse().forEach( ( media_url ) => {
-                            w.open( media_url, '_blank' );
-                        } );
+                        /*
+                        //media_urls.slice( 0 ).reverse().forEach( ( media_url ) => {
+                        //    w.open( media_url, '_blank' );
+                        //} );
+                        */
+                        extension_functions.open_multi_tabs( media_urls );
                         return;
                     }
                     

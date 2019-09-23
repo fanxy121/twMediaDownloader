@@ -2,7 +2,7 @@
     "manifest_version" : 2
 ,   "name" : "__MSG_ext_title__"
 ,   "short_name" : "__MSG_ext_short_name__"
-,   "version" : "0.1.3.3"
+,   "version" : "0.1.3.4"
 ,   "description" : "__MSG_ext_description__"
 ,   "author" : "furyu"
 ,   "default_locale" : "en"
@@ -15,13 +15,13 @@
 ,   "permissions": [ "storage", "webRequest", "webRequestBlocking", "*://*.twitter.com/*", "*://pbs.twimg.com/*", "*://video.twimg.com/*", "*://*.cdn.vine.co/*" ]
 ,   "content_scripts" : [
         {
-            "matches" : [ "*://twitter.com/*", "*://tweetdeck.twitter.com/*", "*://api.twitter.com/*", "*://*.furyutei.work/oauth/*" ]
+            "matches" : [ "*://twitter.com/*", "*://tweetdeck.twitter.com/*", "*://api.twitter.com/*", "*://*.furyutei.work/oauth/*", "*://pbs.twimg.com/media/*" ]
         ,   "js" : [ "js/jquery.min.js", "js/twitter-oauth/sha1.js", "js/twitter-oauth/oauth.js", "js/twitter-oauth/twitter-api.js", "js/session.js" ]
         ,   "run_at" : "document_start"
         ,   "all_frames" : false
         }
     ,   {
-            "matches" : [ "*://twitter.com/*", "*://tweetdeck.twitter.com/*" ]
+            "matches" : [ "*://twitter.com/*", "*://tweetdeck.twitter.com/*", "*://pbs.twimg.com/media/*" ]
         ,   "js" : [ "js/decimal.min.js", "js/jszip.min.js", "js/zip_request_legacy.js", "js/init.js" ]
         ,   "run_at" : "document_start"
         ,   "all_frames" : true
