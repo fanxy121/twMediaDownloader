@@ -77,4 +77,10 @@
 ,   "ENABLED_ON_TWEETDECK" : {
         "message" : "TweetDeck での動作（ダウンロードボタンのみ）"
     }
+,   "TAB_SORTING" : {
+        "message" : "タブ並び替え"
+    }
+,   "TAB_SORTING_ENABLED" : {
+        "message" : "[1][2][3][4]"
+    }
 }

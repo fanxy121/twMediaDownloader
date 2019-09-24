@@ -99,62 +99,77 @@ w.reload_tabs = reload_tabs;
 
 
 var request_tab_sorting = ( () => {
-    var tab_ids_map = {},
+    var sort_index_to_tab_id_map_map = {},
         callback_map = {},
         
-        start_tab_sorting = ( request_id, tab_ids, total ) => {
-            var moved_counter = 0,
-                tab_id,
-                
-                on_moved = ( tab_id, sort_index ) => {
-                    moved_counter ++;
-                    
-                    if ( moved_counter < total ) {
-                        return;
-                    }
-                    
-                    chrome.tabs.update( tab_ids[ 0 ], {
-                        active : true,
-                    }, ( tab ) => {
-                        var tab_ids = tab_ids_map[ request_id ];
-                        
-                        Object.values( tab_ids ).forEach( ( tab_id ) => {
-                            var callback = callback_map[ tab_id ];
-                            
-                            if ( typeof callback == 'function' ) {
-                                callback();
-                            }
-                            delete callback_map[ tab_id ];
-                        } );
-                        
-                        delete tab_ids_map[ request_id ];
-                    } );
-                },
-                
-                move_tab_to_last = ( tab_id, sort_index ) => {
-                    chrome.tabs.move( tab_id, {
-                        index : -1,
-                    }, ( tab ) => {
-                        on_moved( tab_id, sort_index );
-                    } );
-                };
-            
-            Object.keys( tab_ids ).sort().forEach( ( sort_index ) => {
-                move_tab_to_last( tab_ids[ sort_index ], sort_index );
+        get_tab_index = ( tab_id ) => {
+            return new Promise( ( resolve, reject ) => {
+                chrome.tabs.get( tab_id, ( tab ) => {
+                    resolve( tab.index );
+                } );
             } );
+        },
+        
+        move_tab_to_index = ( tab_id, tab_index ) => {
+            return new Promise( ( resolve, reject ) => {
+                chrome.tabs.move( tab_id, {
+                    index : tab_index,
+                }, ( tab ) => {
+                    resolve( tab );
+                } );
+            } );
+        },
+        
+        start_tab_sorting = ( request_id, sorted_tab_id_list, sorted_tab_index_list ) => {
+            Promise.all( sorted_tab_id_list.map( ( tab_id, index ) => {
+                return move_tab_to_index( tab_id, sorted_tab_index_list[ index ] );
+            } ) ).then( ( tab_list ) => {
+                /*
+                //chrome.tabs.update( sorted_tab_id_list[ 0 ], {
+                //    active : true,
+                //}, ( tab ) => {
+                //    finish( request_id, sorted_tab_id_list );
+                //    return;
+                //} );
+                //※能動的にはタブをアクティブにしない（ブラウザ設定依存とする）
+                //  Firefox → browser.tabs.loadDivertedInBackground
+                */
+                
+                finish( request_id, sorted_tab_id_list );
+            } );
+        },
+        
+        finish = ( request_id, sorted_tab_id_list ) => {
+            sorted_tab_id_list.forEach( ( tab_id ) => {
+                var callback = callback_map[ tab_id ];
+                
+                if ( typeof callback == 'function' ) {
+                    callback();
+                }
+                delete callback_map[ tab_id ];
+            } );
+            
+            delete sort_index_to_tab_id_map_map[ request_id ];
         };
         
     return ( tab_id, request_id, total, sort_index, callback ) => {
-        var tab_ids = tab_ids_map[ request_id ] = tab_ids_map[ request_id ] || {};
+        var sort_index_to_tab_id_map = sort_index_to_tab_id_map_map[ request_id ] = sort_index_to_tab_id_map_map[ request_id ] || {};
         
-        tab_ids[ sort_index ] = tab_id;
+        sort_index_to_tab_id_map[ sort_index ] = tab_id;
         callback_map[ tab_id ] = callback;
         
-        if ( Object.keys( tab_ids ).length < total ) {
+        if ( Object.keys( sort_index_to_tab_id_map ).length < total ) {
             return;
         }
         
-        start_tab_sorting( request_id, tab_ids, total );
+        var sorted_tab_id_list = Object.keys( sort_index_to_tab_id_map ).sort().map( sort_index => sort_index_to_tab_id_map[ sort_index ] );
+        
+        Promise.all( sorted_tab_id_list.map( get_tab_index ) )
+        .then( ( tab_index_list ) => {
+            var sorted_tab_index_list = tab_index_list.slice( 0 ).sort();
+            
+            start_tab_sorting( request_id, sorted_tab_id_list, sorted_tab_index_list );
+        } );
     };
 } )(); // end of request_tab_sorting()
 
@@ -163,7 +178,7 @@ function on_message( message, sender, sendResponse ) {
     log_debug( '*** on_message():', message, sender );
     
     var type = message.type,
-        response = null,
+        response = {},
         tab_id = sender.tab && sender.tab.id;
     
     switch ( type ) {
@@ -194,6 +209,7 @@ function on_message( message, sender, sendResponse ) {
         
         case 'RELOAD_TABS':
             reload_tabs();
+            sendResponse( response );
             return true;
         
         case 'NOTIFICATION_ONLOAD' :
@@ -204,6 +220,8 @@ function on_message( message, sender, sendResponse ) {
                 } );
             }
             log_debug( '=> CONTENT_TAB_INFOS', CONTENT_TAB_INFOS );
+            
+            sendResponse( response );
             return true;
         
         case 'NOTIFICATION_ONUNLOAD' :
@@ -212,6 +230,8 @@ function on_message( message, sender, sendResponse ) {
                 delete CONTENT_TAB_INFOS[ tab_id ];
             }
             log_debug( '=> CONTENT_TAB_INFOS', CONTENT_TAB_INFOS );
+            
+            sendResponse( response );
             return true;
         
         case 'TAB_SORT_REQUEST' :

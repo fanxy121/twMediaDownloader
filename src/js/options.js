@@ -45,6 +45,7 @@ $( async function () {
         ,   { key : 'ENABLE_FILTER', val : true }
         ,   { key : 'ENABLE_VIDEO_DOWNLOAD', val : true }
         ,   { key : 'ENABLED_ON_TWEETDECK', val : true }
+        ,   { key : 'TAB_SORTING', val : true }
         ],
         
         INT_KV_LIST = [
@@ -164,7 +165,8 @@ $( async function () {
         var key = kv.key,
             svalue = check_svalue( kv, await get_value( key ) ),
             jq_target = $( '#' + key ),
-            jq_inputs = jq_target.find( 'input:radio' );
+            //jq_inputs = jq_target.find( 'input:radio' );
+            jq_inputs = jq_target.find( 'input:radio[name="' + key + '"]' );
         
         jq_inputs.unbind( 'change' ).each( function () {
             var jq_input = $( this ),

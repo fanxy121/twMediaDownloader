@@ -125,6 +125,7 @@ var twMediaDownloader_chrome_init = ( function() {
         ,   ENABLE_VIDEO_DOWNLOAD : get_bool
         ,   INCOGNITO_MODE : get_bool
         ,   ENABLED_ON_TWEETDECK : get_bool
+        ,   TAB_SORTING : get_bool
         };
     
     return get_init_function( 'GET_OPTIONS', option_name_to_function_map );
@@ -132,14 +133,34 @@ var twMediaDownloader_chrome_init = ( function() {
 
 
 var extension_functions = ( () => {
-    var reg_sort_index = new RegExp( '^request=tab_sorting&script_name=' + SCRIPT_NAME + '&request_id=(\\d+)&total=(\\d+)&sort_index=(\\d+)' ),
+    var tab_sorting_is_valid = ( ( default_value ) => {
+            chrome.runtime.sendMessage( {
+                type : 'GET_OPTIONS',
+                names : [
+                    'TAB_SORTING',
+                ],
+            }, ( response ) => {
+                // ※オプションは非同期取得となるが、ユーザーがアクションを起こすまでに余裕があるので気にしない
+                var tab_sorting_option_value = get_bool( response[ 'TAB_SORTING' ] );
+                
+                if ( tab_sorting_option_value !== null ) {
+                    tab_sorting_is_valid = tab_sorting_option_value;
+                }
+            } );
+            return default_value;
+        } )( true ),
+        
+        reg_sort_index = new RegExp( '^request=tab_sorting&script_name=' + SCRIPT_NAME + '&request_id=(\\d+)&total=(\\d+)&sort_index=(\\d+)' ),
         
         open_multi_tabs = ( urls ) => {
             var request_id = '' + new Date().getTime(),
                 window_name_prefix = 'request=tab_sorting&script_name=' + SCRIPT_NAME + '&request_id=' + request_id + '&total=' + urls.length + '&sort_index=';
             
-            urls.forEach( ( url, sort_index ) => {
-                w.open( url, window_name_prefix + sort_index );
+            urls.reverse().forEach( ( url, index ) => {
+                var sort_index = urls.length - index,
+                    window_name = ( tab_sorting_is_valid ) ? ( window_name_prefix + sort_index ) : '_blank';
+                
+                w.open( url, window_name );
             } );
         }, // end of open_multi_tabs()
         
@@ -159,7 +180,7 @@ var extension_functions = ( () => {
                 request_id : request_id,
                 total : total,
                 sort_index : sort_index,
-            }, function ( response ) {
+            }, ( response ) => {
                 //console.log( 'request_tab_sorting() response:', response );
             } );
             
