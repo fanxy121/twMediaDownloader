@@ -1078,8 +1078,7 @@ var TemplateTwitterAPI = {
         var parameter_map = OAuth.getParameterMap( message.parameters ),
             query = Object.keys( parameter_map ).map( function ( key ) {
                 return key + '=' + OAuth.percentEncode( parameter_map[ key ] );
-            } ).join( '&' ),
-            $api = $[ method.toLowerCase() ]( self.config.api_url_base + path, query );
+            } ).join( '&' );
         
         if ( 
             ( ! ( window.is_chrome_extension || window.is_web_extension ) ) ||
@@ -1087,7 +1086,7 @@ var TemplateTwitterAPI = {
             method.toLowerCase() != 'get' ||
             ( ! /\.json$/.test( path ) )
         ) {
-            $api
+            $[ method.toLowerCase() ]( self.config.api_url_base + path, query )
             .done( function ( data, textStatus, jqXHR ) {
                 if ( typeof callback == 'function' ) {
                     callback.apply( self, arguments );
