@@ -159,7 +159,9 @@ if ( ( typeof browser == 'undefined' ) && ( typeof window != 'undefined' ) ) {
 }
 
 var DEBUG = false,
-    SCRIPT_NAME = 'twitter-api';
+    SCRIPT_NAME = 'twitter-api',
+    USERAGENT =  window.navigator.userAgent.toLowerCase(),
+    IS_FIREFOX = ( 0 <= USERAGENT.indexOf( 'firefox' ) );
 
 
 if ( typeof console.log.apply == 'undefined' ) {
@@ -1079,38 +1081,66 @@ var TemplateTwitterAPI = {
             } ).join( '&' ),
             $api = $[ method.toLowerCase() ]( self.config.api_url_base + path, query );
         
-        $api
-        .done( function ( data, textStatus, jqXHR ) {
-            if ( typeof callback == 'function' ) {
-                callback.apply( self, arguments );
-            }
-            $deferred.resolve.apply( $deferred, arguments );
-        } )
-        .fail( function ( jqXHR, textStatus, errorThrown ) {
-            var fail_arguments = arguments;
-            
-            if ( ! api_options.auto_reauth ) {
-                $deferred.reject.apply( $deferred, fail_arguments );
-                return;
-            }
-            
-            if ( jqXHR && jqXHR.responseText && /(?:[{,]\s*"code"\s*:\s*89\s*[,}]|(?:invalid|expired).*?token)/i.test( jqXHR.responseText ) ) {
-                // {"errors":[{"code":89, "message":"Invalid or expired token."}]}
+        if ( 
+            ( ! ( window.is_chrome_extension || window.is_web_extension ) ) ||
+            IS_FIREFOX ||
+            method.toLowerCase() != 'get' ||
+            ( ! /\.json$/.test( path ) )
+        ) {
+            $api
+            .done( function ( data, textStatus, jqXHR ) {
+                if ( typeof callback == 'function' ) {
+                    callback.apply( self, arguments );
+                }
+                $deferred.resolve.apply( $deferred, arguments );
+            } )
+            .fail( function ( jqXHR, textStatus, errorThrown ) {
+                var fail_arguments = arguments;
                 
-                self.logout( function () {
-                    self.authenticate()
-                    .done( function () {
-                        self.api.apply( self, api_arguments )
-                        .then( $deferred.resolve );
-                    } )
-                    .fail( function () {
-                        $deferred.reject.apply( $deferred, fail_arguments );
+                if ( ! api_options.auto_reauth ) {
+                    $deferred.reject.apply( $deferred, fail_arguments );
+                    return;
+                }
+                
+                if ( jqXHR && jqXHR.responseText && /(?:[{,]\s*"code"\s*:\s*89\s*[,}]|(?:invalid|expired).*?token)/i.test( jqXHR.responseText ) ) {
+                    // {"errors":[{"code":89, "message":"Invalid or expired token."}]}
+                    
+                    self.logout( function () {
+                        self.authenticate()
+                        .done( function () {
+                            self.api.apply( self, api_arguments )
+                            .then( $deferred.resolve );
+                        } )
+                        .fail( function () {
+                            $deferred.reject.apply( $deferred, fail_arguments );
+                        } );
                     } );
-                } );
-                
+                    
+                    return;
+                }
+                $deferred.reject.apply( $deferred, fail_arguments );
+            } );
+            
+            return $promise;
+        }
+        
+        browser.runtime.sendMessage( {
+            type : 'FETCH_JSON',
+            url : self.config.api_url_base + path + '?' + query,
+            options : {
+                method : 'GET',
+                mode: 'cors',
+                credentials: 'include',
+            },
+        }, function ( response ) {
+            log_debug( 'FETCH_JSON => response', response );
+            
+            if ( response.error ) {
+                $deferred.reject( { status : response.error, statusText : '' }, 'fetch error' );
                 return;
             }
-            $deferred.reject.apply( $deferred, fail_arguments );
+            
+            $deferred.resolve( response.json, '', {} );
         } );
         
         return $promise;

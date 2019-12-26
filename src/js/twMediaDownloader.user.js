@@ -1252,33 +1252,77 @@ var [
                 return jq_deferred.promise();
             }
             
-            $.ajax( {
-                type : 'GET'
-            ,   url : api2_url
-            ,   headers : {
+            var api_headers = {
                     'Authorization' : 'Bearer ' + API2_AUTHORIZATION_BEARER
                 ,   'x-csrf-token' : csrf_token
                 ,   'x-twitter-active-user' : 'yes'
                 ,   'x-twitter-auth-type' : 'OAuth2Session'
                 ,   'x-twitter-client-language' : LANGUAGE
+                };
+            
+            if (
+                ( ! IS_CHROME_EXTENSION ) ||
+                IS_FIREFOX
+            ) {
+                $.ajax( {
+                    type : 'GET'
+                ,   url : api2_url
+                ,   headers : api_headers
+                ,   dataType : 'json'
+                ,   xhrFields : {
+                        withCredentials : true
+                    }
+                } )
+                .done( function ( json, textStatus, jqXHR ) {
+                    log_debug( api2_url, json );
+                    try {
+                        jq_deferred.resolve( json.globalObjects.tweets[ tweet_id ] );
+                    }
+                    catch ( error ) {
+                        jq_deferred.reject( jqXHR, error );
+                    }
+                } )
+                .fail( function ( jqXHR, textStatus, errorThrown ) {
+                    log_error( api2_url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
+                    jq_deferred.reject( jqXHR, textStatus, errorThrown );
+                } );
+                
+                return jq_deferred.promise();
+            }
+            
+            /*
+            // Chrome 拡張機能の場合 api.twitter.com を呼ぶと、
+            // > Cross-Origin Read Blocking (CORB) blocked cross-origin response <url> with MIME type application/json. See https://www.chromestatus.com/feature/5629709824032768 for more details.
+            // のような警告が出て、レスポンスボディが空になってしまう
+            // 参考：
+            //   [Changes to Cross-Origin Requests in Chrome Extension Content Scripts - The Chromium Projects](https://www.chromium.org/Home/chromium-security/extension-content-script-fetches)
+            //   [Cross-Origin Read Blocking (CORB) とは - ASnoKaze blog](https://asnokaze.hatenablog.com/entry/2018/04/10/205717)
+            */
+            chrome.runtime.sendMessage( {
+                type : 'FETCH_JSON',
+                url : api2_url,
+                options : {
+                    method : 'GET',
+                    headers : api_headers,
+                    mode: 'cors',
+                    credentials: 'include',
+                },
+            }, function ( response ) {
+                log_debug( 'FETCH_JSON => response', response );
+                
+                if ( response.error ) {
+                    jq_deferred.reject( { status : response.error, statusText : '' }, 'fetch error' );
+                    return;
                 }
-            ,   dataType : 'json'
-            ,   xhrFields : {
-                    withCredentials : true
-                }
-            } )
-            .done( function ( json, textStatus, jqXHR ) {
-                log_debug( api2_url, json );
+                
                 try {
-                    jq_deferred.resolve( json.globalObjects.tweets[ tweet_id ] );
+                    jq_deferred.resolve( response.json.globalObjects.tweets[ tweet_id ] );
+                    // TODO: シークレット(incognito)モードだと、{"errors":[{"code":353,"message":"This request requires a matching csrf cookie and header."}]} のように返されてしまう
+                    // → manifest.json に『"incognito" : "split"』が必要だが、煩雑になる(Firefoxでは manifest.json 読み込み時にエラーとなる)ため、保留
                 }
                 catch ( error ) {
-                    jq_deferred.reject( jqXHR, error );
+                    jq_deferred.reject( { status : 0, statusText : '' }, error );
                 }
-            } )
-            .fail( function ( jqXHR, textStatus, errorThrown ) {
-                log_error( api2_url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
-                jq_deferred.reject( jqXHR, textStatus, errorThrown );
             } );
             
             return jq_deferred.promise();

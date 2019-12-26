@@ -508,7 +508,10 @@ var fetch_api_json = ( () => {
         fetch_json = ( url, options ) => {
             log_debug( 'fetch_json()', url, options );
             
-            if ( ( ! DOMAIN_PREFIX ) || ( IS_FIREFOX ) ) {
+            if ( 
+                //( ! DOMAIN_PREFIX ) ||
+                ( IS_FIREFOX )
+            ) {
                 return fetch( url, options ).then( response => response.json() );
             }
             
@@ -774,7 +777,7 @@ var add_media_button_to_tweet = ( () => {
             var reg_url = /url\("?(.*?)"?\)/,
                 reg_twitter_image = /^https?:\/\/(?:[^.]+\.)?twimg\.com\/.+/;
             
-            return ( $element ) => {
+            return ( $element, tweet_id ) => {
                 var thumbnail_url = null,
                     background_image;
                 
@@ -784,7 +787,7 @@ var add_media_button_to_tweet = ( () => {
                     thumbnail_url = background_image.match( reg_url )[ 1 ].trim();
                     
                     if ( ! thumbnail_url ) {
-                        log_info( '* get_thumbnail_url() thumbnail-URL is empty * background-image:', background_image );
+                        log_info( '* get_thumbnail_url() thumbnail-URL is empty * background-image:', background_image, 'tweet_id:', tweet_id );
                         // TODO: GIF動画などで、タイミングによっては style="background-image: url()" となるケース有り
                         thumbnail_url = LOADING_IMAGE_URL;
                     }
@@ -853,7 +856,7 @@ var add_media_button_to_tweet = ( () => {
                         case 'image' :
                             $media_container.find( 'a.js-media-image-link[rel="mediaPreview"]' ).each( function () {
                                 var $element = $( this ),
-                                    thumbnail_url = get_thumbnail_url( $element );
+                                    thumbnail_url = get_thumbnail_url( $element, tweet_id );
                                 
                                 if ( ! thumbnail_url ) {
                                     return;
@@ -901,7 +904,7 @@ var add_media_button_to_tweet = ( () => {
                         case 'video' :
                             $media_container.find( '.js-media-native-video, a.js-media-image-link[rel="mediaPreview"]' ).each( function () {
                                 var $element = $( this ),
-                                    thumbnail_url = get_thumbnail_url( $element );
+                                    thumbnail_url = get_thumbnail_url( $element, tweet_id );
                                 
                                 if ( ! thumbnail_url ) {
                                     return;
@@ -1095,7 +1098,7 @@ var add_media_button_to_tweet = ( () => {
                         media_url;
                     
                     if ( media_urls.length <= 0 ) {
-                        thumbnail_url = get_thumbnail_url( $media_container.find( '.js-media-gif-container, a.js-media-image-link[rel="mediaPreview"]' ).first() );
+                        thumbnail_url = get_thumbnail_url( $media_container.find( '.js-media-gif-container, a.js-media-image-link[rel="mediaPreview"]' ).first(), tweet_id );
                         if ( ! thumbnail_url ) {
                             return;
                         }
