@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.2.10
+// @version         0.1.3.8
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -203,7 +203,9 @@ var LANGUAGE = ( function () {
     
     USERAGENT =  w.navigator.userAgent.toLowerCase(),
     PLATFORM = w.navigator.platform.toLowerCase(),
-    IS_FIREFOX = ( 0 <= USERAGENT.indexOf( 'firefox' ) ),
+    IS_FIREFOX = ( window.IS_FIREFOX ) || ( 0 <= USERAGENT.indexOf( 'firefox' ) ),
+        // TODO: GoodTwitter等を併用していると、User-Agent では判別できなくなる（"Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; AS; rv:11.0) Waterfox/56.2"のようになる）
+        // → browser が定義されているかで判別(browser_info.js)
     IS_MAC = ( 0 <= PLATFORM.indexOf( 'mac' ) ),
     
     //BASE64_BLOB_THRESHOLD = 30000000, // Data URL(base64) → Blob URL 切替の閾値(Byte) (Firefox用)(TODO: 値は要調整)

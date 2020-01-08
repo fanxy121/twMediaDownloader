@@ -161,7 +161,7 @@ if ( ( typeof browser == 'undefined' ) && ( typeof window != 'undefined' ) ) {
 var DEBUG = false,
     SCRIPT_NAME = 'twitter-api',
     USERAGENT =  window.navigator.userAgent.toLowerCase(),
-    IS_FIREFOX = ( 0 <= USERAGENT.indexOf( 'firefox' ) );
+    IS_FIREFOX = ( window.IS_FIREFOX ) || ( 0 <= USERAGENT.indexOf( 'firefox' ) );
 
 
 if ( typeof console.log.apply == 'undefined' ) {

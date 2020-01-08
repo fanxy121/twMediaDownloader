@@ -6,8 +6,8 @@ if ( typeof browser == 'undefined' ) { window.browser = chrome; }
 
 var USER_AGENT = navigator.userAgent.toLowerCase(),
     IS_EDGE = ( 0 <= USER_AGENT.indexOf( 'edge' ) ),
-    IS_FIREFOX = ( 0 <= USER_AGENT.indexOf( 'firefox' ) ),
-    IS_CHROME = ( ( ! IS_EDGE ) && ( 0 <= USER_AGENT.indexOf( 'chrome' ) ) );
+    IS_FIREFOX = ( window.IS_FIREFOX ) || ( 0 <= USER_AGENT.indexOf( 'firefox' ) ),
+    IS_CHROME = ( ( ! IS_EDGE ) && ( ( ! IS_FIREFOX ) || ( 0 <= USER_AGENT.indexOf( 'chrome' ) ) ) );
 
 
 window.ZipRequestLegacy = ( function () {
