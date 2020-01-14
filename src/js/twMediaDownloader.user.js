@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            twMediaDownloader
 // @description     Download images of user's media-timeline on Twitter.
-// @version         0.1.3.8
+// @version         0.1.3.10
 // @namespace       http://furyu.hatenablog.com/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -717,7 +717,13 @@ function get_screen_name( url ) {
 
 function get_profile_name() {
     if ( is_react_twitter() ) {
-        return $( 'div[data-testid="primaryColumn"] > div > div > div:first h2[role="heading"] > div[aria-haspopup="false"] span > span > span' ).text().trim();
+        //return $( 'div[data-testid="primaryColumn"] > div > div > div:first h2[role="heading"] > div[aria-haspopup="false"] span > span > span' ).text().trim();
+        return $( 'div[data-testid="primaryColumn"] > div > div > div:first h2[role="heading"] > div[aria-haspopup="false"] span > span > span' ).get().reduce( ( previousValue, currentValue ) => {
+            var jq_span = $( currentValue ),
+                text = jq_span.text().trim() || jq_span.find( 'img' ).attr( 'alt' ).trim(); // 絵文字は text() では取れない→ img.alt から取得
+            
+            return previousValue + text;
+        }, '' );
     }
     else {
         return $( 'h1.ProfileHeaderCard-name a.ProfileHeaderCard-nameLink' ).text().trim();
