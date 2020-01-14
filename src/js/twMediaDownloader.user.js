@@ -4445,7 +4445,9 @@ function add_media_button_to_tweet( jq_tweet ) {
                 video_url = jq_video.attr( 'src' );
             
             if ( video_url ) {
-                jq_playable_media = jq_player = jq_video.parents( 'div[role="button"]' ).addClass( 'PlayableMedia-player' );
+                // [2020.01.14] video が div[role="button"] 下に無いケースあり e.g.) https://twitter.com/ceres13627_5/status/1216894829201743873
+                //jq_playable_media = jq_player = jq_video.parents( 'div[role="button"]' ).addClass( 'PlayableMedia-player' );
+                jq_playable_media = jq_player = jq_video.parents().eq( 3 ).addClass( 'PlayableMedia-player' );
                 jq_playable_media.addClass( 'PlayableMedia' );
                 
                 if ( video_url.match( /video\.twimg\.com\/tweet_video\/.*?\.mp4/ ) ) {
