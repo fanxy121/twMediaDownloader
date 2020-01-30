@@ -878,6 +878,7 @@ var [
     twitter_api_is_enabled,
     initialize_twitter_api,
     twitter_api_get_json,
+    api2_get_tweet_info,
 ] = ( () => {
     var OAUTH_CONSUMER_KEY = 'kyxX7ZLs2D3efqDbpK8Mqnpnr',
         OAUTH_CONSUMER_SECRET = 'D85tY89jQoWWVH8oNjIg28PJfK4S2louq5NPxw8VzvlKBwSR0x',
@@ -1283,6 +1284,7 @@ var [
         twitter_api_is_enabled,
         initialize_twitter_api,
         twitter_api_get_json,
+        api2_get_tweet_info,
     ];
 } )();
 
@@ -3804,7 +3806,8 @@ var download_media_timeline = ( function () {
                                             var video_info = null,
                                                 video_url = null,
                                                 variants = [],
-                                                max_bitrate = -1;
+                                                max_bitrate = -1,
+                                                tweet_id;
                                             
                                             try {
                                                 video_info = json.extended_entities.media[ 0 ].video_info;
@@ -3818,7 +3821,7 @@ var download_media_timeline = ( function () {
                                                 } );
                                             }
                                             catch ( error ) {
-                                                log_error( tweet_info_url, error );
+                                                //log_error( tweet_info_url, error );
                                                 // TODO: 外部動画等は未サポート
                                             }
                                             
@@ -3830,8 +3833,70 @@ var download_media_timeline = ( function () {
                                                 load_image( index, video_url );
                                             }
                                             else {
-                                                push_image_result( tweet_info_url, {
-                                                    error : 'not supported'
+                                                /*
+                                                //push_image_result( tweet_info_url, {
+                                                //    error : 'not supported'
+                                                //} );
+                                                */
+                                                // API 1.1 で取得できない場合、API 2 で試行
+                                                
+                                                try {
+                                                    tweet_id = tweet_info_url.match( /&id=(\d+)/ )[ 1 ];
+                                                }
+                                                catch ( error ) {
+                                                    log_error( tweet_info_url, error );
+                                                    
+                                                    push_image_result( tweet_info_url, {
+                                                        error : 'not supported'
+                                                    } );
+                                                    return;
+                                                }
+                                                
+                                                api2_get_tweet_info( tweet_id )
+                                                .done( function ( json, textStatus, jqXHR ) {
+                                                    var video_info = null,
+                                                        video_url = null,
+                                                        variants = [],
+                                                        max_bitrate = -1;
+                                                    
+                                                    try {
+                                                        video_info = json.extended_entities.media[ 0 ].video_info;
+                                                        variants = video_info.variants;
+                                                        
+                                                        variants.forEach( function ( variant ) {
+                                                            if ( ( variant.content_type == 'video/mp4' ) && ( variant.bitrate ) && ( max_bitrate < variant.bitrate ) ) {
+                                                                video_url = variant.url;
+                                                                max_bitrate = variant.bitrate;
+                                                            }
+                                                        } );
+                                                    }
+                                                    catch ( error ) {
+                                                        log_error( tweet_info_url, error );
+                                                        // TODO: 外部動画等は未サポート
+                                                        log_info( 'response(json):', json );
+                                                    }
+                                                    
+                                                    current_tweet_info.video_info = video_info;
+                                                    
+                                                    if ( video_url ) {
+                                                        self.media_url_cache[ tweet_info_url ] = video_url;
+                                                        current_tweet_info.image_urls[ index ] = video_url;
+                                                        load_image( index, video_url );
+                                                    }
+                                                    else {
+                                                        push_image_result( tweet_info_url, {
+                                                            error : 'not supported'
+                                                        } );
+                                                    }
+                                                } )
+                                                .fail( function ( jqXHR, textStatus, errorThrown ) {
+                                                    log_error( tweet_info_url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
+                                                    push_image_result( tweet_info_url, {
+                                                        error : 'API error: ' + jqXHR.status + ' ' + jqXHR.statusText,
+                                                        status_code : jqXHR.status
+                                                    } );
+                                                } )
+                                                .always( function () {
                                                 } );
                                             }
                                         } )
@@ -4802,7 +4867,8 @@ function add_media_button_to_tweet( jq_tweet ) {
                 //    return twitter_api_get_json( tweet_info_url, { auto_reauth : true } );
                 //} )
                 */
-                twitter_api_get_json( tweet_info_url )
+                //twitter_api_get_json( tweet_info_url )
+                api2_get_tweet_info( tweet_id )
                 .done( function ( json, textStatus, jqXHR ) {
                     jq_media_button.off( 'click' );
                     
@@ -4823,8 +4889,10 @@ function add_media_button_to_tweet( jq_tweet ) {
                         } );
                     }
                     catch ( error ) {
-                        log_error( tweet_info_url, error );
+                        //log_error( tweet_info_url, error );
+                        log_error( tweet_id, error );
                         // TODO: 外部動画等は未サポート
+                        log_info( 'response(json):', json );
                     }
                     
                     if ( ! video_url ) {

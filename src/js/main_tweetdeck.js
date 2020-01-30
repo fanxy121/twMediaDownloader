@@ -557,10 +557,12 @@ var fetch_api_json = ( () => {
 
 
 var fetch_tweet_video_url = ( () => {
-    var api_tweet_show_template = 'https://api.twitter.com/1.1/statuses/show.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_reply_count=1&tweet_mode=extended&trim_user=false&include_ext_media_color=true&id=#TWEETID#';
+    //var api_tweet_show_template = 'https://api.twitter.com/1.1/statuses/show.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_reply_count=1&tweet_mode=extended&trim_user=false&include_ext_media_color=true&id=#TWEETID#';
+    var api2_conversation_template = 'https://api.twitter.com/2/timeline/conversation/#TWEETID#.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_composer_source=true&include_ext_alt_text=true&include_reply_count=1&tweet_mode=extended&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&send_error_codes=true&count=20&ext=mediaStats%2ChighlightedLabel%2CcameraMoment';
     
     return ( tweet_id ) => {
-        var api_url = api_tweet_show_template.replace( /#TWEETID#/g, tweet_id );
+        //var api_url = api_tweet_show_template.replace( /#TWEETID#/g, tweet_id );
+        var api_url = api2_conversation_template.replace( /#TWEETID#/g, tweet_id );
         
         return fetch_api_json( api_url )
             .then( ( json ) => {
@@ -570,7 +572,8 @@ var fetch_tweet_video_url = ( () => {
                     max_bitrate = -1;
                 
                 try {
-                    video_info = json.extended_entities.media[ 0 ].video_info;
+                    //video_info = json.extended_entities.media[ 0 ].video_info;
+                    video_info = json.globalObjects.tweets[ tweet_id ].extended_entities.media[ 0 ].video_info;
                     variants = video_info.variants;
                     
                     variants.forEach( function ( variant ) {
@@ -583,6 +586,7 @@ var fetch_tweet_video_url = ( () => {
                 catch ( error ) {
                     log_error( 'fetch_tweet_video_url():', api_url, error );
                     // TODO: 外部動画等は未サポート
+                    log_info( 'response(json):', json );
                 }
                 
                 return video_url;
