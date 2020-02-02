@@ -4728,7 +4728,7 @@ function add_media_button_to_tweet( jq_tweet ) {
     } // end of activate_video_download_link()
     
     
-    if ( 0 < jq_images.length ) {
+    if ( ( jq_playable_media.length <= 0 ) && ( 0 < jq_images.length ) ) {
         if ( ! OPTIONS.IMAGE_DOWNLOAD_LINK ) {
             return;
         }
@@ -4751,6 +4751,10 @@ function add_media_button_to_tweet( jq_tweet ) {
             if ( ( ! jq_playable_media.hasClass( 'PlayableMedia--gif' ) ) || ( ! OPTIONS.QUICK_LOAD_GIF ) ) {
                 return;
             }
+        }
+        
+        if ( jq_playable_media.length <= 0 ) {
+            return;
         }
         
         jq_media_button.text( OPTIONS.VIDEO_DOWNLOAD_LINK_TEXT );
