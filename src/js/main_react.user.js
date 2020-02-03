@@ -1,3 +1,89 @@
+// ==UserScript==
+// @name            Twitter Media Downloader for new Twitter.com 2019
+// @description     Download media files on new Twitter.com 2019.
+// @version         0.1.4.3
+// @namespace       https://memo.furyutei.work/
+// @author          furyu
+// @include         https://twitter.com/*
+// @include         https://api.twitter.com/*
+// @include         https://nazo.furyutei.work/oauth/*
+// @grant           GM_xmlhttpRequest
+// @grant           GM_setValue
+// @grant           GM_getValue
+// @grant           GM_deleteValue
+// @connect         twitter.com
+// @connect         twimg.com
+// @connect         cdn.vine.co
+// @require         https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js
+// @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
+// @require         https://cdnjs.cloudflare.com/ajax/libs/decimal.js/7.3.0/decimal.min.js
+// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/sha1.js
+// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/oauth.js
+// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/twitter-api.js
+// ==/UserScript==
+
+/*
+■ 外部ライブラリ
+- [jQuery](https://jquery.com/), [jquery/jquery: jQuery JavaScript Library](https://github.com/jquery/jquery)  
+    [License | jQuery Foundation](https://jquery.org/license/)  
+    The MIT License  
+
+- [JSZip](https://stuk.github.io/jszip/)  
+    Copyright (c) 2009-2014 Stuart Knightley, David Duponchel, Franz Buchinger, António Afonso  
+    The MIT License  
+    [jszip/LICENSE.markdown](https://github.com/Stuk/jszip/blob/master/LICENSE.markdown)  
+
+- [MikeMcl/decimal.js: An arbitrary-precision Decimal type for JavaScript](https://github.com/MikeMcl/decimal.js)  
+    Copyright (c) 2016, 2017 Michael Mclaughlin  
+    The MIT Licence  
+    [decimal.js/LICENCE.md](https://github.com/MikeMcl/decimal.js/blob/master/LICENCE.md)  
+
+- [sha1.js](http://pajhome.org.uk/crypt/md5/sha1.html)  
+    Copyright Paul Johnston 2000 - 2009
+    The BSD License
+
+- [oauth.js](http://code.google.com/p/oauth/source/browse/code/javascript/oauth.js)(^1)  
+    Copyright 2008 Netflix, Inc.
+    [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)  
+    (^1) archived: [oauth.js](https://web.archive.org/web/20130921042751/http://code.google.com/p/oauth/source/browse/code/javascript/oauth.js)  
+
+
+■ 関連記事など
+- [Twitter メディアダウンローダ：ユーザータイムラインの原寸画像や動画をまとめてダウンロードするユーザースクリプト(PC用Google Chrome・Firefox等対応) - 風柳メモ](http://furyu.hatenablog.com/entry/20160723/1469282864)  
+
+- [furyutei/twMediaDownloader: Download images of user's media-timeline on Twitter.](https://github.com/furyutei/twMediaDownloader)  
+
+- [lambtron/chrome-extension-twitter-oauth-example: Chrome Extension Twitter Oauth Example](https://github.com/lambtron/chrome-extension-twitter-oauth-example)  
+    Copyright (c) 2017 Andy Jiang  
+    The MIT Licence  
+    [chrome-extension-twitter-oauth-example/LICENSE](https://github.com/lambtron/chrome-extension-twitter-oauth-example/blob/master/LICENSE)  
+*/
+
+/*
+The MIT License (MIT)
+
+Copyright (c) 2020 furyu <furyutei@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+
 ( function ( w, d ) {
 
 'use strict';
@@ -50,10 +136,6 @@ var SCRIPT_NAME = 'twMediaDownloader',
     OAUTH_POPUP_WINDOW_NAME = SCRIPT_NAME + '-OAuthAuthorization',
     DEBUG = false;
 
-if ( ! d.querySelector( 'div#react-root' ) ) {
-    return;
-}
-
 if ( ! /^https:\/\/twitter\.com(?!\/account\/login_verification)/.test( w.location.href ) ) {
     if ( ( ! IS_CHROME_EXTENSION ) && ( typeof Twitter != 'undefined' ) ) {
         // Twitter OAuth 認証用ポップアップとして起動した場合は、Twitter.initialize() により tokens 取得用処理を実施（内部でTwitter.initializePopupWindow()を呼び出し）
@@ -70,6 +152,10 @@ if ( /^https:\/\/twitter\.com\/i\/cards/.test( w.location.href ) ) {
     return;
 }
 
+
+if ( ! d.querySelector( 'div#react-root' ) ) {
+    return;
+}
 
 if ( ( typeof jQuery != 'function' ) || ( ( typeof JSZip != 'function' ) && ( typeof ZipRequest != 'function' ) ) || ( typeof Decimal != 'function' ) ) {
     if ( w === w.top ) {

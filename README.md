@@ -5,7 +5,8 @@ Twitter メディアダウンローダ (twMediaDownloader)
 - Copyright (c) 2016 風柳(furyu)  
 - 対象ブラウザ： Google Chrome、Firefox
 
-[Web 版公式 Twitter](https://twitter.com/) の、ユーザーのメディアタイムライン上の画像/動画を、原寸サイズでまとめてダウンロードするためのスクリプト。  
+[Web 版公式 Twitter](https://twitter.com/) のメディア（画像／動画）を、原寸サイズでダウンロードするためのスクリプト。  
+※個別ツイートのメディアダウンロードについては、[TweetDeck](https://tweetdeck.twitter.com/) でも対応。  
 
 
 ■ インストール方法 
@@ -26,9 +27,17 @@ Firefox Quantum で、
 よりアドオンを追加する。  
 
 
-### ユーザースクリプト版（Greasemonkey / Tampermonkey）
-メンテナンス上の都合上、ユーザースクリプトとしての動作は未対応とさせていただきます。  
-※[この版](https://github.com/furyutei/twMediaDownloader/commit/04ba3c19786fb0f170a67b0aec5814ee274ef626)以降では、[ユーザースクリプト](https://furyutei.work/userjs/furyutei/twMediaDownloader.user.js)から新 UI 対応部分を除去してあります。  
+### ユーザースクリプト版
+Firefox＋<s>[Greasemonkey](https://addons.mozilla.org/ja/firefox/addon/greasemonkey/)</s>[Tampermonkey](https://addons.mozilla.org/ja/firefox/addon/tampermonkey/)、Google Chrome＋[Tampermonkey](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=ja) の環境で、  
+
+> [Twitter Media Downloader for new Twitter.com 2019](http://furyutei.github.io/twMediaDownloader/src/js/main_react.user.js)  
+
+> [Twitter Media Downloader for TweetDeck](http://furyutei.github.io/twMediaDownloader/src/js/main_tweetdeck.user.js)  
+
+> [Twitter Media Downloader for old Twitter.com (twMediaDownloader.user.js)](https://furyutei.work/userjs/furyutei/twMediaDownloader.user.js)  
+                                
+をクリックし、指示に従ってインストール。  
+※ Firefox では Quantum(57) + Greasemonkey 4 より動作しなくなった（代わりに Tampermonkey を使用すること）。  
 
 
 ■ 使い方

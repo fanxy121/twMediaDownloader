@@ -28,13 +28,13 @@
         }
     ,   {
             "matches" : [ "*://twitter.com/*" ]
-        ,   "js" : [ "js/main_react.js", "js/twMediaDownloader.user.js" ]
+        ,   "js" : [ "js/main_react.user.js", "js/twMediaDownloader.user.js" ]
         ,   "run_at" : "document_end"
         ,   "all_frames" : true
         }
     ,   {
             "matches" : [ "*://tweetdeck.twitter.com/*" ]
-        ,   "js" : [ "js/main_tweetdeck.js" ]
+        ,   "js" : [ "js/main_tweetdeck.user.js" ]
         ,   "run_at" : "document_end"
         ,   "all_frames" : true
         }

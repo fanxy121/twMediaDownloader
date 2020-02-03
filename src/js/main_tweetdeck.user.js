@@ -1,4 +1,87 @@
-// 【TweetDeck 用・Twitter メディアダウンローダ メイン処理】
+// ==UserScript==
+// @name            Twitter Media Downloader for TweetDeck
+// @description     Download media files on TweetDeck.
+// @version         0.1.4.3
+// @namespace       https://memo.furyutei.work/
+// @author          furyu
+// @include         https://tweetdeck.twitter.com/*
+// @grant           GM_xmlhttpRequest
+// @grant           GM_setValue
+// @grant           GM_getValue
+// @grant           GM_deleteValue
+// @connect         twitter.com
+// @connect         twimg.com
+// @connect         cdn.vine.co
+// @require         https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js
+// @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
+// @require         https://cdnjs.cloudflare.com/ajax/libs/decimal.js/7.3.0/decimal.min.js
+// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/sha1.js
+// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/oauth.js
+// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/twitter-api.js
+// ==/UserScript==
+
+/*
+■ 外部ライブラリ
+- [jQuery](https://jquery.com/), [jquery/jquery: jQuery JavaScript Library](https://github.com/jquery/jquery)  
+    [License | jQuery Foundation](https://jquery.org/license/)  
+    The MIT License  
+
+- [JSZip](https://stuk.github.io/jszip/)  
+    Copyright (c) 2009-2014 Stuart Knightley, David Duponchel, Franz Buchinger, António Afonso  
+    The MIT License  
+    [jszip/LICENSE.markdown](https://github.com/Stuk/jszip/blob/master/LICENSE.markdown)  
+
+- [MikeMcl/decimal.js: An arbitrary-precision Decimal type for JavaScript](https://github.com/MikeMcl/decimal.js)  
+    Copyright (c) 2016, 2017 Michael Mclaughlin  
+    The MIT Licence  
+    [decimal.js/LICENCE.md](https://github.com/MikeMcl/decimal.js/blob/master/LICENCE.md)  
+
+- [sha1.js](http://pajhome.org.uk/crypt/md5/sha1.html)  
+    Copyright Paul Johnston 2000 - 2009
+    The BSD License
+
+- [oauth.js](http://code.google.com/p/oauth/source/browse/code/javascript/oauth.js)(^1)  
+    Copyright 2008 Netflix, Inc.
+    [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)  
+    (^1) archived: [oauth.js](https://web.archive.org/web/20130921042751/http://code.google.com/p/oauth/source/browse/code/javascript/oauth.js)  
+
+
+■ 関連記事など
+- [Twitter メディアダウンローダ：ユーザータイムラインの原寸画像や動画をまとめてダウンロードするユーザースクリプト(PC用Google Chrome・Firefox等対応) - 風柳メモ](http://furyu.hatenablog.com/entry/20160723/1469282864)  
+
+- [furyutei/twMediaDownloader: Download images of user's media-timeline on Twitter.](https://github.com/furyutei/twMediaDownloader)  
+
+- [lambtron/chrome-extension-twitter-oauth-example: Chrome Extension Twitter Oauth Example](https://github.com/lambtron/chrome-extension-twitter-oauth-example)  
+    Copyright (c) 2017 Andy Jiang  
+    The MIT Licence  
+    [chrome-extension-twitter-oauth-example/LICENSE](https://github.com/lambtron/chrome-extension-twitter-oauth-example/blob/master/LICENSE)  
+*/
+
+/*
+The MIT License (MIT)
+
+Copyright (c) 2020 furyu <furyutei@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+
 ( function ( w, d ) {
 
 'use strict';
@@ -53,6 +136,36 @@ if ( ( typeof jQuery != 'function' ) || ( ( typeof JSZip != 'function' ) && ( ty
     return;
 }
 
+if ( ! IS_CHROME_EXTENSION ) {
+    Object.assign( w, {
+        async_set_values : ( name_value_map ) => {
+            return new Promise( function ( resolve, reject ) {
+                Object.entries( name_value_map ).map( ( name, value ) => GM_setValue( name, value ) );
+                
+                resolve( name_value_map );
+            } );
+        }, // end of async_set_values()
+        
+        async_get_values : ( name_list ) => {
+            return new Promise( function ( resolve, reject ) {
+                if ( typeof name_list == 'string' ) {
+                    name_list = [ name_list ];
+                }
+                
+                var name_value_map = name_list.reduce( ( name_value_map, name ) => {
+                        var value = GM_getValue( name );
+                        
+                        name_value_map[ name ] = ( value === undefined ) ? null : value;
+                        
+                        return name_value_map;
+                    }, {} );
+                
+                resolve( name_value_map );
+            } );
+        } // end of async_get_values()
+    } );
+}
+
 var $ = jQuery,
     IS_TOUCHED = ( function () {
         var touched_id = SCRIPT_NAME + '_touched',
@@ -91,7 +204,7 @@ var LANGUAGE = ( () => {
     DOMAIN_PREFIX = location.hostname.match( /^(.+\.)?twitter\.com$/ )[ 1 ] || '',
     
     //LOADING_IMAGE_URL = 'https://abs.twimg.com/a/1460504487/img/t1/spinner-rosetta-gray-32x32.gif',
-    LOADING_IMAGE_URL = 'https://tweetdeck.twitter.com/favicon.ico',
+    LOADING_IMAGE_URL = $( 'link[rel="shortcut icon"]' ).attr( 'href' ) || new URL( '/favicon.ico', d.baseURI ).href,
     
     MEDIA_BUTTON_CLASS = SCRIPT_NAME + '_media_button',
     TOUCHED_CLASS = SCRIPT_NAME + '-touched',
@@ -509,7 +622,7 @@ var fetch_api_json = ( () => {
             log_debug( 'fetch_json()', url, options );
             
             if ( 
-                //( ! DOMAIN_PREFIX ) ||
+                ( ! IS_CHROME_EXTENSION ) ||
                 ( IS_FIREFOX )
             ) {
                 return fetch( url, options ).then( response => response.json() );
@@ -1465,9 +1578,14 @@ function initialize( user_options ) {
 
 function main() {
     // ユーザーオプション読み込み
-    w.twMediaDownloader_chrome_init( function ( user_options ) {
-        initialize( user_options );
-    } );
+    if ( typeof w.twMediaDownloader_chrome_init == 'function' ) {
+        w.twMediaDownloader_chrome_init( function ( user_options ) {
+            initialize( user_options );
+        } );
+    }
+    else {
+        initialize()
+    }
 } // end of main()
 
 //}
