@@ -711,7 +711,18 @@ function get_profile_name() {
     //return $( 'div[data-testid="primaryColumn"] > div > div > div:first h2[role="heading"] > div[aria-haspopup="false"] span > span > span' ).text().trim();
     return $( 'div[data-testid="primaryColumn"] > div > div > div:first h2[role="heading"] > div[aria-haspopup="false"] span > span > span' ).get().reduce( ( previousValue, currentValue ) => {
         var jq_span = $( currentValue ),
-            text = jq_span.text().trim() || jq_span.find( 'img' ).attr( 'alt' ).trim(); // 絵文字は text() では取れない→ img.alt から取得
+            jq_span_img = jq_span.find( 'img' ),
+            text = '';
+        
+        try {
+            text = jq_span.text().trim() || ( ( 0 < jq_span_img.length ) ? jq_span_img.attr( 'alt' ).trim() : '' ); // 絵文字は text() では取れない→ img.alt から取得
+        }
+        catch ( error ) {
+        }
+        
+        if ( ! text ) {
+            text = ' ';
+        }
         
         return previousValue + text;
     }, '' );
