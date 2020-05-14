@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Twitter Media Downloader for new Twitter.com 2019
 // @description     Download media files on new Twitter.com 2019.
-// @version         0.1.4.3
+// @version         0.1.4.5
 // @namespace       https://memo.furyutei.work/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -709,7 +709,8 @@ function get_screen_name( url ) {
 
 function get_profile_name() {
     //return $( 'div[data-testid="primaryColumn"] > div > div > div:first h2[role="heading"] > div[aria-haspopup="false"] span > span > span' ).text().trim();
-    return $( 'div[data-testid="primaryColumn"] > div > div > div:first h2[role="heading"] > div[aria-haspopup="false"] span > span > span' ).get().reduce( ( previousValue, currentValue ) => {
+    //return $( 'div[data-testid="primaryColumn"] > div > div > div:first h2[role="heading"] > div[aria-haspopup="false"] span > span > span' ).get().reduce( ( previousValue, currentValue ) => {
+    return $( 'div[data-testid="primaryColumn"] > div > div > div:first h2[role="heading"] > div > div > div > span > span > span' ).get().reduce( ( previousValue, currentValue ) => {
         var jq_span = $( currentValue ),
             jq_span_img = jq_span.find( 'img' ),
             text = '';
@@ -754,10 +755,13 @@ function get_tweet_id( url ) {
 
 
 function judge_profile_timeline( url ) {
+log_info( 'url:', url );
     if ( ! url ) {
         url = w.location.href;
     }
     
+log_info( 'get_screen_name:', get_screen_name( url ) );
+log_info( 'get_profile_name:', get_profile_name( url ) );
     return ( !! get_screen_name( url ) ) && ( !! get_profile_name( url ) );
 } // end of judge_profile_timeline()
 
@@ -4193,7 +4197,8 @@ var check_timeline_headers = ( function () {
         var jq_target_container = $();
         
         //jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div:first:has(h2[role="heading"] > div[aria-haspopup="false"] span > span > span)' );
-        jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div' ).first().filter( function () {return ( 0 < $( this ).find( 'h2[role="heading"] > div[aria-haspopup="false"] span > span > span' ).length );} );
+        //jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div' ).first().filter( function () {return ( 0 < $( this ).find( 'h2[role="heading"] > div[aria-haspopup="false"] span > span > span' ).length );} );
+        jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div' ).first().filter( function () {return ( 0 < $( this ).find( 'h2[role="heading"] > div > div > div > span > span > span' ).length );} );
         if ( 0 < jq_target_container.find( '.' + button_container_class_name ).length ) {
             jq_target_container = $();
         }
