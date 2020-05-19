@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Twitter Media Downloader for new Twitter.com 2019
 // @description     Download media files on new Twitter.com 2019.
-// @version         0.1.4.5
+// @version         0.1.4.6
 // @namespace       https://memo.furyutei.work/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -755,13 +755,10 @@ function get_tweet_id( url ) {
 
 
 function judge_profile_timeline( url ) {
-log_info( 'url:', url );
     if ( ! url ) {
         url = w.location.href;
     }
     
-log_info( 'get_screen_name:', get_screen_name( url ) );
-log_info( 'get_profile_name:', get_profile_name( url ) );
     return ( !! get_screen_name( url ) ) && ( !! get_profile_name( url ) );
 } // end of judge_profile_timeline()
 
