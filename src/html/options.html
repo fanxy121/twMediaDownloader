@@ -19,17 +19,50 @@
     <div class="opt radio" id="IMAGE_DOWNLOAD_LINK">
       <label><input type="radio" value="1" name="IMAGE_DOWNLOAD_LINK" id="IMAGE_DOWNLOAD_LINK_1" /><span class="i18n">ENABLED</span></label>
       <label><input type="radio" value="0" name="IMAGE_DOWNLOAD_LINK" id="IMAGE_DOWNLOAD_LINK_0" /><span class="i18n">DISABLED</span></label>
-    <!-- /.select --></div>
+    <!-- /.radio --></div>
     <h2 class="i18n">VIDEO_DOWNLOAD_LINK</h2>
     <div class="opt radio" id="VIDEO_DOWNLOAD_LINK">
       <label><input type="radio" value="1" name="VIDEO_DOWNLOAD_LINK" id="VIDEO_DOWNLOAD_LINK_1" /><span class="i18n">ENABLED</span></label>
       <label><input type="radio" value="0" name="VIDEO_DOWNLOAD_LINK" id="VIDEO_DOWNLOAD_LINK_0" /><span class="i18n">DISABLED</span></label>
-    <!-- /.select --></div>
+    <!-- /.radio --></div>
+    <h2 class="i18n">DEFAULT_ACTION_ON_CLICK_EVENT</h2>
+    <div class="opt radio" id="OPEN_MEDIA_LINK_BY_DEFAULT">
+      <p><label><input type="radio" value="0" name="OPEN_MEDIA_LINK_BY_DEFAULT" /><span class="i18n">DOWNLOAD_MEDIA</span></label></p>
+      <p>
+        <label><input type="radio" value="1" name="OPEN_MEDIA_LINK_BY_DEFAULT" /><span class="i18n">OPEN_MEDIA_LINK</span></label>
+        <span id="TAB_SORTING">(
+            <span class="i18n">TAB_SORTING</span>
+            <label><input type="radio" value="1" name="TAB_SORTING" /><span class="i18n">TAB_SORTING_ENABLED</label>
+            <label><input type="radio" value="0" name="TAB_SORTING" /><span class="i18n">DISABLED</label>
+        )</span>
+      </p>
+    <!-- /.radio --></div>
+    <h2 class="i18n">ENABLE_ZIPREQUEST</h2>
+    <div class="opt radio" id="ENABLE_ZIPREQUEST">
+      <label><input type="radio" value="1" name="ENABLE_ZIPREQUEST" id="ENABLE_ZIPREQUEST_1" /><span class="i18n">ENABLED</span>&nbsp;<span class="note"></span></label>
+      <label><input type="radio" value="0" name="ENABLE_ZIPREQUEST" id="ENABLE_ZIPREQUEST_0" /><span class="i18n">DISABLED</span>&nbsp;<span class="note">(<span class="i18n">IF_DOWNLOAD_FAILURE</span>)</span></label>
+    <!-- /.radio --></div>
     <h2 class="i18n">ENABLE_FILTER</h2>
     <div class="opt radio" id="ENABLE_FILTER">
       <label><input type="radio" value="1" name="ENABLE_FILTER" id="ENABLE_FILTER_1" /><span class="i18n">ENABLED</span>&nbsp;<span class="note">(<span class="i18n">FAST_LOW_ACCURACY</span>)</span></label>
       <label><input type="radio" value="0" name="ENABLE_FILTER" id="ENABLE_FILTER_0" /><span class="i18n">DISABLED</span>&nbsp;<span class="note">(<span class="i18n">SLOW_HIGH_ACCURACY</span>)</span></label>
-    <!-- /.select --></div>
+    <!-- /.radio --></div>
+    <h2 class="i18n">DOWNLOAD_SIZE_LIMIT_MB</h2>
+    <div class="opt int" id="DOWNLOAD_SIZE_LIMIT_MB">
+      <span class="current short_text"></span>MiB &#8658;
+      <input type="text" value="8" name="DOWNLOAD_SIZE_LIMIT_MB" class="short_text" />&nbsp;MiB (10~10000)
+      <input type="button" value="SET" name="SET" class="i18n button" />
+    <!-- /.int --></div>
+    <h2 class="i18n">ENABLE_VIDEO_DOWNLOAD</h2>
+    <div class="opt radio" id="ENABLE_VIDEO_DOWNLOAD">
+      <label><input type="radio" value="1" name="ENABLE_VIDEO_DOWNLOAD" id="ENABLE_VIDEO_DOWNLOAD_1" /><span class="i18n">ENABLED</span>&nbsp;<span class="note">(<span class="i18n">USER_AUTH_REQUIRED</span>)</span></label>
+      <label><input type="radio" value="0" name="ENABLE_VIDEO_DOWNLOAD" id="ENABLE_VIDEO_DOWNLOAD_0" /><span class="i18n">DISABLED</span>&nbsp;<span class="note"></span></label>
+    <!-- /.radio --></div>
+    <h2 class="i18n">ENABLED_ON_TWEETDECK</h2>
+    <div class="opt radio" id="ENABLED_ON_TWEETDECK">
+      <label><input type="radio" value="1" name="ENABLED_ON_TWEETDECK" id="ENABLED_ON_TWEETDECK_1" /><span class="i18n">ENABLED</span>&nbsp;<span class="note"></span></label>
+      <label><input type="radio" value="0" name="ENABLED_ON_TWEETDECK" id="ENABLED_ON_TWEETDECK_0" /><span class="i18n">DISABLED</span>&nbsp;<span class="note"></span></label>
+    <!-- /.radio --></div>
   </form>
   
   <form id="form_command"><input type="button" value="DEFAULT" name="DEFAULT" class="i18n button" /><input type="button" value="OPERATION" name="OPERATION" class="i18n button" /></form>

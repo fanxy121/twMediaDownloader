@@ -1,0 +1,11 @@
+{
+  "devDependencies": {
+    "eslint": "^6.8.0",
+    "eslint-plugin-jquery": "^1.5.1"
+  },
+  "dependencies": {
+    "acorn": "^7.1.1",
+    "lodash": "^4.17.19",
+    "minimist": "^1.2.2"
+  }
+}

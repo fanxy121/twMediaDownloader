@@ -36,18 +36,51 @@
         "message" : "停止中"
     }
 ,   "IMAGE_DOWNLOAD_LINK" : {
-        "message" : "画像ダウンロードリンク"
+        "message" : "画像ダウンロードボタン"
     }
 ,   "VIDEO_DOWNLOAD_LINK" : {
-        "message" : "動画ダウンロードリンク"
+        "message" : "動画ダウンロードボタン"
+    }
+,   "ENABLE_ZIPREQUEST" : {
+        "message" : "バックグラウンドでのZIP化（パフォーマンス向上）"
     }
 ,   "ENABLE_FILTER" : {
-        "message" : "[試用] 検索タイムラインでのメディアフィルタ(filter:～使用)"
+        "message" : "検索タイムラインでのメディアフィルタ(filter:～使用)"
+    }
+,   "IF_DOWNLOAD_FAILURE" : {
+        "message" : "ダウンロードに失敗する場合"
     }
 ,   "FAST_LOW_ACCURACY" : {
         "message" : "速い・低精度"
     }
 ,   "SLOW_HIGH_ACCURACY" : {
         "message" : "遅い・高精度"
+    }
+,   "DEFAULT_ACTION_ON_CLICK_EVENT" : {
+        "message" : "クリック時のデフォルト動作（※[Alt]押下時は逆の動作）"
+    }
+,   "DOWNLOAD_MEDIA" : {
+        "message" : "メディアダウンロード"
+    }
+,   "OPEN_MEDIA_LINK" : {
+        "message" : "メディアのリンクを開く"
+    }
+,   "DOWNLOAD_SIZE_LIMIT_MB" : {
+        "message" : "ダウンロードサイズ制限"
+    }
+,   "ENABLE_VIDEO_DOWNLOAD" : {
+        "message" : "動画ダウンロード"
+    }
+,   "USER_AUTH_REQUIRED" : {
+        "message" : "ユーザー認証が必要"
+    }
+,   "ENABLED_ON_TWEETDECK" : {
+        "message" : "TweetDeck での動作（ダウンロードボタンのみ）"
+    }
+,   "TAB_SORTING" : {
+        "message" : "タブ並び替え"
+    }
+,   "TAB_SORTING_ENABLED" : {
+        "message" : "[1][2][3][4]"
     }
 }

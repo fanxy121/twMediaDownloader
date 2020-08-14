@@ -36,18 +36,51 @@
         "message" : "Under suspension"
     }
 ,   "IMAGE_DOWNLOAD_LINK" : {
-        "message" : "Image Download Links"
+        "message" : "Image Download Buttons"
     }
 ,   "VIDEO_DOWNLOAD_LINK" : {
-        "message" : "Video Download Links"
+        "message" : "Video Download Buttons"
+    }
+,   "ENABLE_ZIPREQUEST" : {
+        "message" : "Zip in background (for performance)"
     }
 ,   "ENABLE_FILTER" : {
-        "message" : "*Trial* Media filtering on search-timeline (using 'filter:~')"
+        "message" : "Media filtering on search-timeline (using 'filter:~')"
+    }
+,   "IF_DOWNLOAD_FAILURE" : {
+        "message" : "If download failure occured"
     }
 ,   "FAST_LOW_ACCURACY" : {
         "message" : "Fast, but low accuracy"
     }
 ,   "SLOW_HIGH_ACCURACY" : {
         "message" : "Slow, but high accuracy"
+    }
+,   "DEFAULT_ACTION_ON_CLICK_EVENT" : {
+        "message" : "Default action on click (another action is performed on alt and click)"
+    }
+,   "DOWNLOAD_MEDIA" : {
+        "message" : "Download Media"
+    }
+,   "OPEN_MEDIA_LINK" : {
+        "message" : "Open Media Links"
+    }
+,   "DOWNLOAD_SIZE_LIMIT_MB" : {
+        "message" : "Download size limit"
+    }
+,   "ENABLE_VIDEO_DOWNLOAD" : {
+        "message" : "Video Download"
+    }
+,   "USER_AUTH_REQUIRED" : {
+        "message" : "User authentication required"
+    }
+,   "ENABLED_ON_TWEETDECK" : {
+        "message" : "On TweetDeck (Download Buttons only)"
+    }
+,   "TAB_SORTING" : {
+        "message" : "Tab sorting"
+    }
+,   "TAB_SORTING_ENABLED" : {
+        "message" : "[1][2][3][4]"
     }
 }

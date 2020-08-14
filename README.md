@@ -5,7 +5,8 @@ Twitter メディアダウンローダ (twMediaDownloader)
 - Copyright (c) 2016 風柳(furyu)  
 - 対象ブラウザ： Google Chrome、Firefox
 
-[Web 版公式 Twitter](https://twitter.com/) の、ユーザーのメディアタイムライン上の画像/動画を、原寸サイズでまとめてダウンロードするためのスクリプト。  
+[Web 版公式 Twitter](https://twitter.com/) のメディア（画像／動画）を、原寸サイズでダウンロードするためのスクリプト。  
+※個別ツイートのメディアダウンロードについては、[TweetDeck](https://tweetdeck.twitter.com/) でも対応。  
 
 
 ■ インストール方法 
@@ -21,15 +22,19 @@ Google Chrome で、
 ### Firefox Quantum (WebExtentions)版  
 Firefox Quantum で、  
 
-> [Twitter メディアダウンローダ – Firefox 向けアドオン](https://addons.mozilla.org/ja/firefox/addon/tw-media-downloader/?src=userprofile)  
+> [Twitter メディアダウンローダ – Firefox 向けアドオン](https://addons.mozilla.org/ja/firefox/addon/tw-media-downloader/)  
 
 よりアドオンを追加する。  
 
 
-### ユーザースクリプト版（Greasemonkey / Tampermonkey）
+### ユーザースクリプト版
 Firefox＋<s>[Greasemonkey](https://addons.mozilla.org/ja/firefox/addon/greasemonkey/)</s>[Tampermonkey](https://addons.mozilla.org/ja/firefox/addon/tampermonkey/)、Google Chrome＋[Tampermonkey](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=ja) の環境で、  
 
-> [Twitter メディアダウンローダ (twMediaDownloader.user.js)](https://github.com/furyutei/twMediaDownloader/raw/master/src/js/twMediaDownloader.user.js)  
+> [Twitter Media Downloader for new Twitter.com 2019](http://furyutei.github.io/twMediaDownloader/src/js/main_react.user.js)  
+
+> [Twitter Media Downloader for TweetDeck](http://furyutei.github.io/twMediaDownloader/src/js/main_tweetdeck.user.js)  
+
+> [Twitter Media Downloader for old Twitter.com (twMediaDownloader.user.js)](https://furyutei.work/userjs/furyutei/twMediaDownloader.user.js)  
                                 
 をクリックし、指示に従ってインストール。  
 ※ Firefox では Quantum(57) + Greasemonkey 4 より動作しなくなった（代わりに Tampermonkey を使用すること）。  
@@ -56,9 +61,34 @@ ZIP 化が完了するか、もしくは[停止]を押すと、対象となる�
 
 ■ 外部ライブラリなど
 ---
-- [jQuery](https://jquery.com/)  
+- [jQuery](https://jquery.com/), [jquery/jquery: jQuery JavaScript Library](https://github.com/jquery/jquery)  
+    [License | jQuery Foundation](https://jquery.org/license/)  
+    [The MIT License](https://tldrlegal.com/license/mit-license)  
+
 - [JSZip](https://stuk.github.io/jszip/)  
-- [decimal.js](https://github.com/MikeMcl/decimal.js)
+    Copyright (c) 2009-2014 Stuart Knightley, David Duponchel, Franz Buchinger, António Afonso  
+    [The MIT License](https://github.com/Stuk/jszip/blob/master/LICENSE.markdown)  
+
+- [MikeMcl/decimal.js: An arbitrary-precision Decimal type for JavaScript](https://github.com/MikeMcl/decimal.js)  
+    Copyright (c) 2016, 2017 Michael Mclaughlin  
+    [The MIT Licence](https://github.com/MikeMcl/decimal.js/blob/master/LICENCE.md)  
+
+- [lambtron/chrome-extension-twitter-oauth-example: Chrome Extension Twitter Oauth Example](https://github.com/lambtron/chrome-extension-twitter-oauth-example)  
+    Copyright (c) 2017 Andy Jiang  
+    [The MIT Licence](https://github.com/lambtron/chrome-extension-twitter-oauth-example/blob/master/LICENSE)  
+
+- [sha1.js](http://pajhome.org.uk/crypt/md5/sha1.html)  
+    Copyright Paul Johnston 2000 - 2009
+    The BSD License
+
+- [oauth.js](http://code.google.com/p/oauth/source/browse/code/javascript/oauth.js)(^1)  
+    Copyright 2008 Netflix, Inc.
+    [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)  
+    (^1) archived: [oauth.js](https://web.archive.org/web/20130921042751/http://code.google.com/p/oauth/source/browse/code/javascript/oauth.js)  
+
+- [jsTwitterOAuth/twitter-api.js](https://github.com/furyutei/jsTwitterOAuth/blob/master/src/js/twitter-oauth/twitter-api.js)  
+    Copyright (c) 2018 風柳 (furyu)  
+    [MIT License](https://github.com/furyutei/jsTwitterOAuth/blob/master/LICENSE)  
 
 
 ■ 関連記事
