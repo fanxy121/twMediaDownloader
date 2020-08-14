@@ -6,6 +6,7 @@ module.exports = {
         "browser": true,
         "es6": true,
         "jquery": true,
+        "node": true,
     },
     "extends": "eslint:recommended",
     "globals": {
@@ -30,6 +31,7 @@ module.exports = {
         "async_set_values": "readonly",
         "async_get_values": "readonly",
         "extension_functions": "readonly",
+        "BigInt": "readonly",
     },
     "parserOptions": {
         "ecmaVersion": 2018

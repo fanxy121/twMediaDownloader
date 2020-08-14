@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Twitter Media Downloader for new Twitter.com 2019
 // @description     Download media files on new Twitter.com 2019.
-// @version         0.1.4.6
+// @version         0.1.4.7
 // @namespace       https://memo.furyutei.work/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -17,9 +17,10 @@
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/decimal.js/7.3.0/decimal.min.js
-// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/sha1.js
-// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/oauth.js
-// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/twitter-api.js
+// @require         https://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/sha1.js
+// @require         https://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/oauth.js
+// @require         https://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/twitter-api.js
+// @require         https://furyutei.github.io/twMediaDownloader/src/js/timeline.js
 // ==/UserScript==
 
 /*
@@ -134,7 +135,8 @@ var OPTIONS = {
 var SCRIPT_NAME = 'twMediaDownloader',
     IS_CHROME_EXTENSION = !! ( w.is_chrome_extension ),
     OAUTH_POPUP_WINDOW_NAME = SCRIPT_NAME + '-OAuthAuthorization',
-    DEBUG = false;
+    DEBUG = false,
+    self = undefined;
 
 if ( ! /^https:\/\/twitter\.com(?!\/account\/login_verification)/.test( w.location.href ) ) {
     if ( ( ! IS_CHROME_EXTENSION ) && ( typeof Twitter != 'undefined' ) ) {
@@ -157,12 +159,19 @@ if ( ! d.querySelector( 'div#react-root' ) ) {
     return;
 }
 
-if ( ( typeof jQuery != 'function' ) || ( ( typeof JSZip != 'function' ) && ( typeof ZipRequest != 'function' ) ) || ( typeof Decimal != 'function' ) ) {
-    if ( w === w.top ) {
-        console.error( SCRIPT_NAME + '(' + location.href + '):', 'Library not found - ', 'jQuery:', typeof jQuery, 'JSZip:', typeof JSZip, 'ZipRequest:', typeof ZipRequest, 'Decimal:', typeof Decimal );
+[ 'jQuery', 'JSZip', 'ZipRquest', 'Decimal', 'TwitterTimeline' ].map( ( library_name ) => {
+    if ( typeof window[ library_name ] ) {
+        return;
     }
-    return;
-}
+    
+    const
+        message = SCRIPT_NAME + '(' + location.href + '): Library not found - ' +  library_name;
+    
+    if ( w === w.top ) {
+        console.error( message );
+    }
+    throw new Error( message );
+} );
 
 var $ = jQuery,
     IS_TOUCHED = ( function () {
@@ -219,6 +228,21 @@ var LANGUAGE = ( function () {
     //   ※警告を出さないためには、「≡」→「オプション」→「プライバシーとセキュリティ」（about:preferences#privacy）にて、
     //     「セキュリティ」→「詐欺コンテンツと危険なソフトウェアからの防護」にある、
     //     「☑不要な危険ソフトウェアを警告する(C)」のチェックを外す
+    
+    //{ "timeline.js" より
+    TwitterTimeline = ( ( TwitterTimeline ) => {
+        TwitterTimeline.debug_mode = DEBUG;
+        TwitterTimeline.logged_script_name = SCRIPT_NAME;
+        
+        return TwitterTimeline;
+    } )( window.TwitterTimeline ),
+    
+    TIMELINE_TYPE = TwitterTimeline.TIMELINE_TYPE,
+    TIMELINE_STATUS = TwitterTimeline.TIMELINE_STATUS,
+    REACTION_TYPE = TwitterTimeline.REACTION_TYPE,
+    MEDIA_TYPE = TwitterTimeline.MEDIA_TYPE,
+    CLASS_TIMELINE_SET = TwitterTimeline.CLASS_TIMELINE_SET,
+    //}
     
     API_RATE_LIMIT_STATUS = 'https://api.twitter.com/1.1/application/rate_limit_status.json',
     API_VIDEO_CONFIG_BASE = 'https://api.twitter.com/1.1/videos/tweet/config/#TWEETID#.json',
@@ -1405,7 +1429,13 @@ var Csv = {
         
         column_item_list.forEach( function ( column_item ) {
             column_item = ( '' + column_item ).trim();
-            csv_columns.push( '"' + column_item.replace( /"/g, '""' ) + '"' );
+            
+            if ( /^[\-+]?\d+\.?\d*(?:E[\-+]?\d+)?$/.test( column_item ) ) {
+                csv_columns.push( column_item );
+            }
+            else {
+                csv_columns.push( '"' + column_item.replace( /"/g, '""' ) + '"' );
+            }
         } );
         
         self.csv_rows.push( csv_columns.join( ',' ) );
@@ -1434,778 +1464,20 @@ var Csv = {
 
 
 function is_ziprequest_usable() {
-    var is_usable = ( ( OPTIONS.ENABLE_ZIPREQUEST ) && ( typeof ZipRequest == 'function' ) && ( ( ! IS_FIREFOX ) || ( ! OPTIONS.INCOGNITO_MODE ) ) );
-        // TODO: Firefox はシークレットモードでは ZipRequest が使用できない（zip_request.generate()
-    
-    return is_usable;
+    /*
+    //var is_usable = ( ( OPTIONS.ENABLE_ZIPREQUEST ) && ( typeof ZipRequest == 'function' ) && ( ( ! IS_FIREFOX ) || ( ! OPTIONS.INCOGNITO_MODE ) ) );
+    //    // TODO: Firefox はシークレットモードでは ZipRequest が使用できない（zip_request.generate()
+    //
+    //return is_usable;
+    */
+    // TODO: background 側の処理メモリを圧迫してしまったとしても、content_scripts 側では感知／タブを閉じて解放が出来ない
+    // → 2020.08.12: 暫定的に ZipRequest は使用不可にして対応
+    return false;
 } // end of is_ziprequest_usable()
 
 
 var download_media_timeline = ( function () {
-    var TemplateMediaTimeline = {
-        DEFAULT_UNTIL_ID : '9223372036854775807' // 0x7fffffffffffffff = 2^63-1
-        // [2017/10/25] 最新の画像がダウンロードできなくなったので修正
-        //   922337203685477580を超えたからだと思われる→比較する際に上位から18桁分しか評価されていない？
-        //   ただし、9223372036854775808(=2^63)を指定すると一つもダウンロードできなくなるので、範囲チェックはされている模様
-        //   →これでは（DEFAULT_UNTIL_ID : '999999999999999999' だと）、2018/05/25 22:05:53 までしか動作しないことになる……
-        // 
-        // [2017/10/31] そもそもの比較方法が誤っていたので、これを修正
-        //   '922337203685477580' < '9223372036854775807' // => true
-        //   '922337203685477581' < '9223372036854775807' // => false になってしまう
-        //     ↓
-        //   bignum_cmp( '922337203685477581', '9223372036854775807' ) < 0 // => true
-        
-        ,   timeline_status : null // 'media' / 'search' / 'end' / 'error' / 'stop'
-        
-        ,   api_limit_retry_number : 10 // API 最大リトライ回数(要調整)
-        
-        ,   search_api_filter_names : [ 's', 'near', 'l', 'qf' ] // 検索フィルタークエリ名リスト
-            // s: 対象アカウント(follows:フォローしているユーザーのみ)
-            // near: 場所（me：近くの場所)
-            // l: 言語
-            // qf: クオリティフィルター
-        
-        ,   init : function ( screen_name, until_id, since_id, filter_info ) {
-                var self = this,
-                    is_search_timeline = self.is_search_timeline = judge_search_timeline(),
-                    url_info = get_url_info( w.location.href );
-                
-                self.api_retry_remaining_number = self.api_limit_retry_number;
-                self.api_max_retry_number = 0;
-                
-                self.filter_info = filter_info;
-                self.timeline_status = ( is_search_timeline ) ? 'search' : 'media';
-                //self.timeline_status = 'search'; // ※テスト用
-                self.screen_name = screen_name;
-                self.logined_screen_name = get_logined_screen_name();
-                
-                if ( is_search_timeline ) {
-                    var search_query;
-                    
-                    search_query = $( 'div[data-testid="primaryColumn"] form[role="search"] input[data-testid="SearchBox_Search_Input"]' ).val();
-                    
-                    if ( ! search_query ) {
-                        search_query = decodeURIComponent( url_info.query_map[ 'q' ] );
-                    }
-                    
-                    if ( OPTIONS.ENABLE_FILTER ) {
-                        // 本スクリプトと競合するフィルタの類は削除しておく
-                        search_query = search_query.replace( /-?filter:(?:media|periscope)(?:\s+OR\s+)?/g, ' ' );
-                        
-                        if ( ! filter_info.image ) {
-                            search_query = search_query.replace( /-?filter:(?:images)(?:\s+OR\s+)?/g, ' ' );
-                        }
-                        if ( ! filter_info.gif ) {
-                            search_query = search_query.replace( /-?card_name:animated_gif(?:\s+OR\s+)?/g, ' ' );
-                        }
-                        if ( ! filter_info.video ) {
-                            search_query = search_query.replace( /-?filter:(?:videos|native_video|vine)(?:\s+OR\s+)?/g, ' ' );
-                        }
-                    }
-                    self.search_query = search_query.replace( /\s+/g, ' ' ).trim();
-                }
-                else {
-                    self.search_query = null;
-                }
-                
-                if ( is_search_timeline && ( ! self.search_query ) ) {
-                    self.search_query = 'twitter'; // ダミー
-                }
-                self.since_id = ( since_id ) ? since_id : null;
-                self.fetched_min_id = self.until_id = ( until_id ) ? until_id : ( ( filter_info.is_for_likes_timeline ) ? datetime_to_like_id( format_date( new Date() ) ) : self.DEFAULT_UNTIL_ID );
-                self.tweet_info_list = [];
-                
-                if ( filter_info.is_for_likes_timeline ) {
-                    self.media_timeline_parameters = {
-                        max_position : self.until_id
-                        
-                    ,   api_endpoint : {
-                            url : 'https://twitter.com/' + ( ( self.screen_name ) ? self.screen_name : 'twitter' ) + '/likes/timeline'
-                        ,   data : {
-                                include_available_features : 1
-                            ,   include_entities : 1
-                            ,   reset_error_state : false
-                            //,   last_note_ts : null
-                            ,   max_position : null
-                            ,   count : 1 // いいねタイムライン取得時は 1 件ずつにし、返された JSON の min_position（次回の max_position）より、いいね時刻情報を取得
-                            }
-                        }
-                    };
-                }
-                else if ( filter_info.is_for_notifications_timeline ) {
-                    self.media_timeline_parameters = {
-                        max_position : self.until_id
-                        
-                    ,   api_endpoint : {
-                            url : 'https://twitter.com/mentions/timeline'
-                        ,   data : {
-                                include_available_features : 1
-                            ,   include_entities : 1
-                            ,   reset_error_state : false
-                            //,   last_note_ts : null
-                            ,   max_position : null
-                            ,   filter : 'all'
-                            }
-                        }
-                    };
-                }
-                else {
-                    self.media_timeline_parameters = {
-                        max_position : self.until_id
-                        
-                    ,   api_endpoint : {
-                            url : 'https://twitter.com/i/profiles/show/' + ( ( self.screen_name ) ? self.screen_name : 'twitter' ) + ( ( filter_info.include_retweets || filter_info.nomedia ) ? '/timeline/with_replies' : '/media_timeline' )
-                        ,   data : {
-                                include_available_features : 1
-                            ,   include_entities : 1
-                            ,   reset_error_state : false
-                            //,   last_note_ts : null
-                            ,   max_position : null
-                            }
-                        }
-                    };
-                }
-                
-                self.search_timeline_parameters = {
-                    api_max_position : null
-                    // ※ API で指定する max_position は数値ではなく、"TWEET-(from tweet id)-(to tweet id)-(長い文字列)==-T-0" のような文字列であることに注意
-                    //    最初はわからないため、HTML より data-min-position を読み取って使用する
-                
-                ,   html_endpoint : {
-                        url : 'https://twitter.com/search'
-                    ,   data : {
-                            f : 'tweets'
-                        ,   vertical : 'default'
-                        ,   src : 'typd'
-                        ,   q : null
-                        }
-                    }
-                ,   api_endpoint : {
-                        url : 'https://twitter.com/i/search/timeline'
-                    ,   data : {
-                            f : 'tweets'
-                        ,   vertical : 'default'
-                        ,   src : 'typd'
-                        ,   include_available_features : '1'
-                        ,   include_entities : '1'
-                        ,   reset_error_state : 'false'
-                        ,   q : null
-                        //,   last_note_ts : null
-                        ,   max_position : null
-                        }
-                    }
-                };
-                
-                if ( is_search_timeline ) {
-                    self.search_api_filter_names.forEach( function ( name ) {
-                        var value = url_info.query_map[ name ];
-                        
-                        if ( value ) {
-                            self.search_timeline_parameters.html_endpoint.data[ name ] = value;
-                            self.search_timeline_parameters.api_endpoint.data[ name ] = value;
-                        }
-                    } );
-                }
-                
-                // User-Agent 変更用マークを付ける(URLクエリに "_tmdl=legacy" 追加)
-                self.media_timeline_parameters.api_endpoint.data.__tmdl = 'legacy';
-                self.search_timeline_parameters.html_endpoint.data.__tmdl = 'legacy';
-                self.search_timeline_parameters.api_endpoint.data.__tmdl = 'legacy';
-                
-                return self;
-            } // end of init()
-        
-        ,   fetch_tweet_info : function ( callback ) {
-                var self = this,
-                    filter_info = self.filter_info,
-                    media_timeline_parameters = self.media_timeline_parameters,
-                    search_timeline_parameters = self.search_timeline_parameters,
-                    tweet_info = self.tweet_info_list.shift(),
-                    check_id;
-                
-                if ( tweet_info ) {
-                    if ( self.timeline_status == 'stop' ) {
-                        callback( {
-                            tweet_info : null
-                        ,   timeline_status : self.timeline_status
-                        ,   media_timeline_parameters : media_timeline_parameters
-                        ,   search_timeline_parameters : search_timeline_parameters
-                        } );
-                        return self;
-                    }
-                    
-                    if ( filter_info.is_for_likes_timeline ) {
-                        // いいね(Likes)タイムラインには、いいねした時刻に関する情報が含まれていない
-                        // → いいねタイムライン取得時は count=1 を取得して 1 件ずつにし、返された JSON の min_position（次回の max_position）より、いいね時刻情報を取得
-                        check_id = media_timeline_parameters.max_position;
-                    }
-                    else {
-                        check_id = ( tweet_info.retweet_id || tweet_info.tweet_id );
-                    }
-                    
-                    if ( ( self.since_id ) && ( bignum_cmp( check_id, self.since_id ) <= 0 ) ) {
-                        self.timeline_status = 'end';
-                        
-                        callback( {
-                            tweet_info : null
-                        ,   timeline_status : self.timeline_status
-                        ,   media_timeline_parameters : media_timeline_parameters
-                        ,   search_timeline_parameters : search_timeline_parameters
-                        } );
-                        return self;
-                    }
-                    
-                    if ( ! filter_info.is_for_likes_timeline ) {
-                        if ( bignum_cmp( self.fetched_min_id, check_id ) <= 0 ) {
-                            log_info( 'fetch_tweet_info(): skip checked tweet (fetched minimum tweet-id:', self.fetched_min_id, '<= checked tweet-id:', check_id, ')' );
-                            return self.fetch_tweet_info( callback );
-                        }
-                        self.fetched_min_id = check_id;
-                    }
-                    
-                    callback( {
-                        tweet_info : tweet_info
-                    ,   timeline_status : self.timeline_status
-                    ,   media_timeline_parameters : media_timeline_parameters
-                    ,   search_timeline_parameters : search_timeline_parameters
-                    } );
-                    
-                    return self;
-                }
-                
-                switch ( self.timeline_status ) {
-                    case 'media' :
-                        self.__get_next_media_timeline( function () {
-                            return self.fetch_tweet_info( callback );
-                        } );
-                        break;
-                    
-                    case 'search' :
-                        self.__get_next_search_timeline( function () {
-                            return self.fetch_tweet_info( callback );
-                        } );
-                        break;
-                    
-                    default : // 'stop' / 'error' etc.
-                        callback( {
-                            tweet_info : tweet_info
-                        ,   timeline_status : self.timeline_status
-                        ,   media_timeline_parameters : media_timeline_parameters
-                        ,   search_timeline_parameters : search_timeline_parameters
-                        } );
-                        break;
-                }
-                return self;
-            } // end of fetch_tweet_info()
-        
-        ,   stop : function () {
-                var self = this;
-                
-                self.timeline_status = 'stop';
-            } // end of stop()
-        
-        ,   __get_next_media_timeline : function ( callback ) {
-                var self = this,
-                    filter_info = self.filter_info,
-                    media_timeline_parameters = self.media_timeline_parameters,
-                    api_endpoint = media_timeline_parameters.api_endpoint,
-                    data = api_endpoint.data,
-                    is_delayed_callback = false;
-                
-                //data.last_note_ts = self.__get_last_note_ts();
-                data.max_position = media_timeline_parameters.max_position;
-                
-                $.getJSON( api_endpoint.url, data )
-                .done( function ( json ) {
-                    var tweet_info_list = self.tweet_info_list,
-                        tweet_count = 0,
-                        min_tweet_id = self.DEFAULT_UNTIL_ID,
-                        json_inner = ( json.inner ) ? json.inner : ( ( json.items_html && json.min_position ) ? json : null );
-                        // items_html/min_position が json.inner ではなく、json 直下にある場合もある（未ログイン時など）
-                    
-                    if ( ( ! json_inner ) ||  ( ! json_inner.items_html ) || ( ! json_inner.min_position ) ) {
-                        if ( filter_info.is_for_likes_timeline ) {
-                            log_error( 'items not found' );
-                            self.timeline_status = 'end';
-                        }
-                        else {
-                            // 検索タイムラインにかかるケース有り
-                            log_info( 'change timeline (-> search): max_position=', media_timeline_parameters.max_position );
-                            self.timeline_status = 'search';
-                        }
-                        return;
-                    }
-                    
-                    var jq_html_fragment = get_jq_html_fragment( json_inner.items_html );
-                    
-                    jq_html_fragment.find( '.js-stream-item' ).each( function () {
-                        var tweet_info = self.__get_tweet_info( $( this ) );
-                        
-                        if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) ) {
-                            return;
-                        }
-                        tweet_info_list.push( tweet_info );
-                        
-                        if ( bignum_cmp( tweet_info.tweet_id, min_tweet_id ) < 0 ) {
-                            min_tweet_id = tweet_info.tweet_id;
-                        }
-                        tweet_count ++;
-                    } );
-                    
-                    if ( json_inner.min_position ) {
-                        media_timeline_parameters.max_position = json_inner.min_position;
-                    }
-                    else {
-                        if ( ! filter_info.is_for_likes_timeline ) {
-                            if ( bignum_cmp( min_tweet_id, media_timeline_parameters.max_position ) < 0 ) {
-                                media_timeline_parameters.max_position = min_tweet_id;
-                            }
-                            else {
-                                log_info( 'change timeline (-> search): max_position=', media_timeline_parameters.max_position );
-                                self.timeline_status = 'search';
-                            }
-                        }
-                    }
-                    
-                    if ( ( ! json_inner.has_more_items ) || ( json_inner.new_latent_count <= 0 ) ) {
-                        if (
-                            ( filter_info.is_for_likes_timeline ) && // 『いいね』タイムラインのみの措置（TODO: 他のタイムラインでも必要か？）
-                            ( 0 < self.api_retry_remaining_number )
-                        ) {
-                            // ツイートが残っているにもかかわらず、new_latent_count : 0, has_more_items : false で返る場合有り
-                            // →リトライで取得できることがある（何回リトライしてもだめで、後ほどやり直すと大丈夫なケースもある）
-                            self.api_retry_remaining_number --;
-                            if ( self.api_max_retry_number < ( self.api_limit_retry_number - self.api_retry_remaining_number ) ) {
-                                self.api_max_retry_number = self.api_limit_retry_number - self.api_retry_remaining_number;
-                            }
-                            
-                            log_debug( 'retry request in __get_next_media_timeline(): api_retry_remaining_number=', self.api_retry_remaining_number, 'api_max_retry_number=', self.api_max_retry_number );
-                            
-                            //is_delayed_callback = true;
-                        }
-                        else {
-                            self.api_retry_remaining_number = self.api_limit_retry_number;
-                            
-                            if ( filter_info.is_for_likes_timeline ) {
-                                self.timeline_status = 'end';
-                            }
-                            else {
-                                log_info( 'change timeline (-> search): max_position=', media_timeline_parameters.max_position );
-                                self.timeline_status = 'search';
-                            }
-                        }
-                    }
-                    else {
-                        self.api_retry_remaining_number = self.api_limit_retry_number;
-                    }
-                    
-                    if ( is_delayed_callback ) {
-                        // リトライをかけるのを遅らせる
-                        setTimeout( function () {
-                            callback();
-                        }, 100 );
-                    }
-                } )
-                .fail( function ( jqXHR, textStatus, errorThrown ) {
-                    log_error( api_endpoint.url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
-                    self.timeline_status = 'error';
-                } )
-                .always( function () {
-                    if ( ! is_delayed_callback ) {
-                        callback();
-                    }
-                } );
-            } // end of __get_next_media_timeline()
-        
-        ,   __get_next_search_timeline : function ( callback ) {
-                var self = this,
-                    filter_info = self.filter_info,
-                    search_timeline_parameters = self.search_timeline_parameters,
-                    api_endpoint = search_timeline_parameters.api_endpoint,
-                    api_data = api_endpoint.data,
-                    is_delayed_callback = false;
-                
-                if ( ! search_timeline_parameters.api_max_position ) {
-                    // 初めに HTML から data-min-position を取得する必要あり
-                    return self.__get_first_search_timeline( callback );
-                }
-                
-                //api_data.last_note_ts = self.__get_last_note_ts();
-                api_data.max_position = search_timeline_parameters.api_max_position;
-                
-                $.getJSON( api_endpoint.url, api_data )
-                .done( function ( json ) {
-                    var tweet_info_list = self.tweet_info_list,
-                        tweet_count = 0,
-                        json_inner = ( json.inner ) ? json.inner : ( ( json.items_html && json.min_position ) ? json : null );
-                        // items_html/min_position が json.inner ではなく、json 直下にある場合もある（未ログイン時など）
-                    
-                    if ( ( ! json_inner ) ||  ( ! json_inner.items_html ) || ( ! json_inner.min_position ) ) {
-                        log_error( 'items not found' );
-                        self.timeline_status = 'end';
-                        return;
-                    }
-                    
-                    var jq_html_fragment = get_jq_html_fragment( json_inner.items_html );
-                    
-                    jq_html_fragment.find( '.js-stream-item' ).each( function () {
-                        var tweet_info = self.__get_tweet_info( $( this ) );
-                        
-                        if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) ) {
-                            return;
-                        }
-                        tweet_info_list.push( tweet_info );
-                        tweet_count ++;
-                    } );
-                    
-                    if ( json_inner.min_position ) {
-                        if ( json_inner.min_position != search_timeline_parameters.api_max_position ) {
-                            search_timeline_parameters.api_max_position = json_inner.min_position;
-                            self.api_retry_remaining_number = self.api_limit_retry_number;
-                        }
-                        else {
-                            // min_position に変化がなければ終了とみなす → 念のため、一定回数リトライ
-                            if (  0 < self.api_retry_remaining_number ) {
-                                self.api_retry_remaining_number --;
-                                log_debug( 'retry request in ___get_next_search_timeline(): api_retry_remaining_number=', self.api_retry_remaining_number );
-                                
-                                //is_delayed_callback = true;
-                            }
-                            else {
-                                self.api_retry_remaining_number = self.api_limit_retry_number;
-                                self.timeline_status = 'end';
-                            }
-                        }
-                    }
-                    else {
-                        self.timeline_status = 'end';
-                    }
-                    // 終了判定としては使えなかった（has_more_items が false でも、実際に検索したらまだツイートがある場合がある模様）
-                    //{
-                    //if ( ! json_inner.has_more_items ) {
-                    //    self.timeline_status = 'end';
-                    //}
-                    //}
-                    
-                    if ( is_delayed_callback ) {
-                        // リトライをかけるのを遅らせる
-                        setTimeout( function () {
-                            callback();
-                        }, 100 );
-                    }
-                } )
-                .fail( function ( jqXHR, textStatus, errorThrown ) {
-                    log_error( api_endpoint.url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
-                    self.timeline_status = 'error';
-                } )
-                .always( function () {
-                    if ( ! is_delayed_callback ) {
-                        callback();
-                    }
-                } );
-                
-                return self;
-            } // end of ___get_next_search_timeline()
-        
-        ,   __get_first_search_timeline : function ( callback ) {
-                var self = this,
-                    html_endpoint = self.search_timeline_parameters.html_endpoint,
-                    html_data = html_endpoint.data,
-                    api_endpoint = self.search_timeline_parameters.api_endpoint,
-                    api_data = api_endpoint.data,
-                    filter_info = self.filter_info,
-                    filters = [];
-                
-                if ( self.is_search_timeline ) {
-                    html_data.q = self.search_query;
-                    
-                    if ( self.until_id != self.DEFAULT_UNTIL_ID ) {
-                        html_data.q = html_data.q.replace( /-?max_id:\d+(?:\s+OR\s+)?/g, ' ' ) + ' max_id:' + Decimal.sub( self.until_id, 1 ).toString();
-                    }
-                    if ( self.since_id ) {
-                        html_data.q = html_data.q.replace( /-?since_id:\d+(?:\s+OR\s+)?/g, ' ' ) + ' since_id:' + self.since_id;
-                    }
-                }
-                else {
-                    if ( filter_info.is_for_notifications_timeline ) {
-                        html_data.q = 'to:' + self.logined_screen_name + ' -from:' + self.logined_screen_name;
-                    }
-                    else {
-                        html_data.q = 'from:' + self.screen_name;
-                    }
-                    
-                    html_data.q += ' max_id:' + Decimal.sub( self.media_timeline_parameters.max_position, 1 ).toString();
-                    
-                    if ( self.since_id ) {
-                        html_data.q += ' since_id:' + self.since_id;
-                    }
-                    
-                    if ( filter_info.include_retweets ) {
-                        html_data.q += ' include:nativeretweets';
-                    }
-                    else {
-                        html_data.q += ' exclude:retweets';
-                    }
-                }
-                
-                if ( OPTIONS.ENABLE_FILTER && ( ! filter_info.nomedia ) ) {
-                    if ( filter_info.image ) {
-                        filters.push( 'filter:images' );
-                    }
-                    if ( filter_info.gif ) {
-                        filters.push( 'card_name:animated_gif' );
-                    }
-                    if ( filter_info.video ) {
-                        //filters.push( 'filter:videos' ); // TODO: 外部サイトの動画(YouTube等)は未サポート← 'filter:videos' だとそれらも含む
-                        filters.push( 'filter:native_video' );
-                        filters.push( 'filter:vine' );
-                    }
-                    
-                    html_data.q += ' ' + filters.join( ' OR ' );
-                    html_data.q += ' -filter:periscope'; // TODO: Periscope は未サポート
-                }
-                
-                if ( self.is_search_timeline ) {
-                    w.location.href.replace( /^.*\?/, '' ).split( '&' ).forEach( function ( param ) {
-                        var parts = param.split( '=' );
-                        
-                        if ( parts.length != 2 ) {
-                            return;
-                        }
-                        parts[ 1 ] = decodeURIComponent( parts[ 1 ] );
-                        
-                        switch ( parts[ 0 ] ) {
-                            case 's' : // follows: フォローしているユーザーのみ
-                            case 'near' : // me: 近くの場所
-                            case 'l': // 言語
-                                html_data[ parts[ 0 ] ] = parts[ 1 ];
-                                break;
-                        }
-                    } );
-                }
-                
-                api_data.q = html_data.q; // クエリは最初に設定したもので共通
-                
-                var fetch_counter = 0,
-                    fetch_timeline = function () {
-                        $.ajax( {
-                            type : 'GET'
-                        ,   url : html_endpoint.url
-                        ,   data : html_data
-                        ,   dataType : 'html'
-                        } )
-                        .done( function ( html ) {
-                            var jq_html_fragment =  get_jq_html_fragment( html );
-                            
-                            if ( 0 < jq_html_fragment.find( 'div#react-root' ).length ) {
-                                // TODO: React版Twitterで、（UserAgentを置換しているのに）React版HTML が取得される場合がある
-                                //      →暫定処理として、時間を置いて再取得
-                                fetch_counter ++;
-                                log_debug( 'page is for react: ', fetch_counter );
-                                
-                                if ( fetch_counter < 10 ) {
-                                    setTimeout( function () {
-                                        fetch_timeline();
-                                    }, 1000 );
-                                    return;
-                                }
-                                log_error( 'cannot get legacy page (fetch retry over:', fetch_counter, ')' );
-                            }
-                            
-                            var tweet_info_list = self.tweet_info_list,
-                                api_max_position = self.search_timeline_parameters.api_max_position = jq_html_fragment.find( '*[data-min-position]' ).attr( 'data-min-position' );
-                                // ※ data-min-position は数値ではなく、"TWEET-(from tweet id)-(to tweet id)-(長い文字列)==-T-0" みたいになっていることに注意
-                            
-                            log_debug( '__get_first_search_timeline() : data-min-position = ', api_max_position );
-                            
-                            if ( ! api_max_position ) {
-                                if ( jq_html_fragment.find( 'div.SearchEmptyTimeline' ).length <= 0 ) {
-                                    log_error( '"data-min-position" not found' );
-                                    self.timeline_status = 'error';
-                                    callback();
-                                    return;
-                                }
-                                
-                                self.timeline_status = 'end';
-                                callback();
-                                return;
-                            }
-                            
-                            jq_html_fragment.find( '.js-stream-item' ).each( function () {
-                                var jq_stream_item = $( this ),
-                                    tweet_info = self.__get_tweet_info( jq_stream_item );
-                                
-                                if ( ( ! tweet_info ) || ( ! tweet_info.tweet_id  ) ) {
-                                    return;
-                                }
-                                tweet_info.jq_stream_item = jq_stream_item;
-                                tweet_info.timeline_kind = 'search-timeline';
-                                
-                                tweet_info_list.push( tweet_info );
-                            } );
-                            
-                            callback();
-                        } )
-                        .fail( function ( jqXHR, textStatus, errorThrown ) {
-                            log_error( html_endpoint.url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
-                            self.timeline_status = 'error';
-                            callback();
-                        } )
-                        .always( function () {
-                            //callback();
-                        } );
-                    };
-                
-                fetch_timeline();
-                
-                return self;
-            } // end of __get_first_search_timeline()
-        
-        ,   __get_last_note_ts : function () {
-                var last_note_ts = null;
-                try {
-                    last_note_ts = localStorage.getItem( '__DM__:latestNotificationTimestamp' );
-                }
-                catch ( error ) {
-                }
-                last_note_ts = ( last_note_ts ) ? last_note_ts : new Date().getTime();
-                
-                return last_note_ts;
-            } // end of __get_last_note_ts()
-        
-        ,   __get_tweet_info : function ( jq_tweet_container ) {
-                var self = this,
-                    filter_info = self.filter_info,
-                    tweet_info = { media_type : 'nomedia' },
-                    tweet_url,
-                    date,
-                    timestamp_ms,
-                    image_urls = [],
-                    jq_tweet = jq_tweet_container.find( '.js-stream-tweet' ),
-                    reply_number = 0,
-                    retweet_number = 0,
-                    like_number = 0;
-                
-                if ( jq_tweet.length <= 0 ) {
-                    return null;
-                }
-                
-                if ( ( jq_tweet.attr( 'data-promoted' ) == 'true' ) ||  jq_tweet.hasClass( 'promoted-tweet' ) ) {
-                    // プロモーションツイートは除く
-                    return null;
-                }
-                
-                tweet_url = jq_tweet_container.find( '.js-permalink' ).attr( 'href' );
-                if ( ! tweet_url ) {
-                    // '.js-stream-item' のうち、Tweet でないため、Permalink が取得できないものもある（「タグ付けされたユーザー」等）
-                    return null;
-                }
-                if ( tweet_url.charAt( 0 ) == '/' ) {
-                    tweet_url = 'https://twitter.com' + tweet_url;
-                }
-                
-                try {
-                    tweet_info.tweet_url = tweet_url;
-                    tweet_info.tweet_id = jq_tweet.attr( 'data-tweet-id' );
-                    tweet_info.tweet_screen_name = jq_tweet.attr( 'data-screen-name' );
-                    tweet_info.tweet_profile_name = jq_tweet.attr( 'data-name' );
-                    tweet_info.retweet_id = jq_tweet.attr( 'data-retweet-id' );
-                    tweet_info.retweeter = jq_tweet.attr( 'data-retweeter' );
-                    tweet_info.timestamp_ms = timestamp_ms = jq_tweet.find( '*[data-time-ms]' ).attr( 'data-time-ms' );
-                    tweet_info.date = date = new Date( parseInt( timestamp_ms, 10 ) );
-                    tweet_info.datetime = ( timestamp_ms ) ? format_date( date, 'YYYY/MM/DD hh:mm:ss' ) : '';
-                    tweet_info.zipdate = adjust_date_for_zip( date );
-                    tweet_info.tweet_text = jq_tweet.find( '.js-tweet-text, .tweet-text' ).text();
-                    
-                    try {
-                        reply_number = parseInt( jq_tweet.find( '.ProfileTweet-action--reply:first .ProfileTweet-actionCount[data-tweet-stat-count]' ).attr( 'data-tweet-stat-count' ).replace( /[^\d\-.]/g, '' ), 10 );
-                    }
-                    catch ( err ) {
-                    }
-                    try {
-                        retweet_number = parseInt( jq_tweet.find( '.ProfileTweet-action--retweet:first .ProfileTweet-actionCount[data-tweet-stat-count]' ).attr( 'data-tweet-stat-count' ).replace( /[^\d\-.]/g, '' ), 10 );
-                    }
-                    catch ( err ) {
-                    }
-                    try {
-                        like_number = parseInt( jq_tweet.find( '.ProfileTweet-action--favorite:first .ProfileTweet-actionCount[data-tweet-stat-count]' ).attr( 'data-tweet-stat-count' ).replace( /[^\d\-.]/g, '' ), 10 );
-                    }
-                    catch ( err ) {
-                    }
-                    
-                    tweet_info.reply_number = ( isNaN( reply_number ) ) ? 0 : reply_number;
-                    tweet_info.retweet_number = ( isNaN( retweet_number ) ) ? 0 : retweet_number;
-                    tweet_info.like_number = ( isNaN( like_number ) ) ? 0 : like_number;
-                }
-                catch ( error ) {
-                    // '.js-stream-item' のうち、Tweet でないため、screen_name 等が取得できないものもある（「タグ付けされたユーザー」等）
-                    return null;
-                }
-                
-                //if ( filter_info.image ) {
-                //    jq_tweet.find( '.AdaptiveMedia-photoContainer img' ).each( function () {
-                //        image_urls.push( get_img_url_orig( $( this ).attr( 'src' ) ) );
-                //    } );
-                //}
-                
-                jq_tweet.find( '.AdaptiveMedia-photoContainer img' ).each( function () {
-                    image_urls.push( get_img_url_orig( $( this ).attr( 'src' ) ) );
-                } );
-                
-                if ( 0 < image_urls.length ) {
-                    tweet_info.media_type = 'image';
-                }
-                else if ( true || twitter_api_is_enabled() ) {
-                    jq_tweet.find( '.AdaptiveMedia-videoContainer .PlayableMedia' ).each( function () {
-                        var jq_playable_media = $( this );
-                        
-                        if ( jq_playable_media.hasClass( 'PlayableMedia--gif' ) ) {
-                            //if ( ! filter_info.gif ) {
-                            //    return;
-                            //}
-                            
-                            if ( OPTIONS.QUICK_LOAD_GIF ) {
-                                try {
-                                    image_urls.push( get_gif_video_url_from_playable_media( jq_playable_media ) );
-                                    tweet_info.media_quick = true;
-                                }
-                                catch ( error ) {
-                                    image_urls.push( API_VIDEO_CONFIG_BASE.replace( '#TWEETID#', tweet_info.tweet_id ) );
-                                }
-                            }
-                            else {
-                                image_urls.push( API_VIDEO_CONFIG_BASE.replace( '#TWEETID#', tweet_info.tweet_id ) );
-                            }
-                            tweet_info.media_type = 'gif';
-                        }
-                        else {
-                            //if ( ! filter_info.video ) {
-                            //    return;
-                            //}
-                            if ( jq_playable_media.hasClass( 'PlayableMedia--vine' ) ) {
-                                image_urls.push( API_VIDEO_CONFIG_BASE.replace( '#TWEETID#', tweet_info.tweet_id ) );
-                                tweet_info.media_source = 'vine';
-                            }
-                            else {
-                                image_urls.push( API_TWEET_SHOW_BASE.replace( '#TWEETID#', tweet_info.tweet_id ) );
-                            }
-                            tweet_info.media_type = 'video';
-                        }
-                        return false; // video は現状では 1 つのみサポート
-                    } );
-                }
-                tweet_info.image_urls = image_urls;
-                tweet_info.media_infos = image_urls.map( function ( value ) {
-                        return {};
-                    } );
-                
-                return tweet_info;
-            } // end of __get_tweet_info()
-        
-        }, // end of TemplateMediaTimeline
-        
-        
-        TemplateMediaDownload = {
+    var TemplateMediaDownload = {
             downloading : false
         ,   stopping : false
         ,   closing : false
@@ -2942,7 +2214,8 @@ var download_media_timeline = ( function () {
                     jq_range_container,
                     jq_button_close,
                     is_for_likes_timeline = self.is_for_likes_timeline = !! options.is_for_likes_timeline,
-                    is_for_notifications_timeline = self.is_for_notifications_timeline = !! options.is_for_notifications_timeline;
+                    is_for_notifications_timeline = self.is_for_notifications_timeline = !! options.is_for_notifications_timeline,
+                    timeline_type = self.timeline_type = options.timeline_type;
                 
                 if ( ! jq_container ) {
                     self.init_container();
@@ -3078,7 +2351,7 @@ var download_media_timeline = ( function () {
                     max_datetime = '',
                     min_datetime = '',
                     total_tweet_counter = 0,
-                    total_image_counter = 0,
+                    total_media_counter = 0,
                     total_file_size = 0,
                     filter_info = {
                         image : support_image
@@ -3090,7 +2363,11 @@ var download_media_timeline = ( function () {
                     ,   is_for_likes_timeline : self.is_for_likes_timeline
                     ,   is_for_notifications_timeline : self.is_for_notifications_timeline
                     },
-                    MediaTimeline = self.MediaTimeline = object_extender( TemplateMediaTimeline ),
+                    
+                    timeline_type = self.timeline_type,
+                    ClassTimeline = CLASS_TIMELINE_SET[ timeline_type ],
+                    TimelineObject = self.TimelineObject = null,
+                    
                     zip = null,
                     zip_request = null,
                     csv = self.csv = object_extender( Csv ).init(),
@@ -3120,8 +2397,42 @@ var download_media_timeline = ( function () {
                     until_date = ( until_date ) ? '(' + until_date + ')' : '(unknown)';
                 }
                 
-                MediaTimeline.init( screen_name, until_id, since_id, filter_info );
+                switch ( timeline_type ) {
+                    case TIMELINE_TYPE.user : {
+                            TimelineObject = new ClassTimeline( {
+                                screen_name : screen_name,
+                                max_tweet_id : until_id ? Decimal.sub( until_id, 1 ) : null,
+                            } );
+                        }
+                        break;
+                    
+                    case TIMELINE_TYPE.search : {
+                            let specified_query = $( 'div[data-testid="primaryColumn"] form[role="search"] input[data-testid="SearchBox_Search_Input"]' ).val(),
+                                specified_filter_info = {
+                                    use_media_filter : OPTIONS.ENABLE_FILTER,
+                                    image : filter_info.image,
+                                    gif : filter_info.gif,
+                                    video : filter_info.video,
+                                    nomedia : filter_info.nomedia,
+                                };
+                            
+                            if ( ! specified_query ) {
+                                specified_query = decodeURIComponent( get_url_info( w.location.href ).query_map[ 'q' ] || '' );
+                            }
+                            TimelineObject = new ClassTimeline( {
+                                specified_query :  specified_query,
+                                max_tweet_id : until_id ? Decimal.sub( until_id, 1 ) : null,
+                                filter_info : specified_filter_info,
+                            } );
+                        }
+                        break;
+                    
+                    default :
+                        alert( 'Unsupported timeline !' );
+                        return;
+                }
                 
+                self.TimelineObject = TimelineObject;
                 
                 if ( is_ziprequest_usable() ) {
                     zip_request = new ZipRequest().open();
@@ -3136,11 +2447,11 @@ var download_media_timeline = ( function () {
                     action_date : w.location.href
                 } );
                 
-                if ( MediaTimeline.search_query ) {
-                    self.log( 'Search Query :', MediaTimeline.search_query );
+                if ( TimelineObject.query_base ) {
+                    self.log( 'Search Query :', TimelineObject.query_base );
                     self.csv_push_row( {
                         tweet_date : 'Search Query:',
-                        action_date : MediaTimeline.search_query
+                        action_date : TimelineObject.query_base,
                     } );
                 }
                 
@@ -3216,7 +2527,7 @@ var download_media_timeline = ( function () {
                         zip_request = null;
                     }
                     zip = null;
-                    MediaTimeline = null;
+                    TimelineObject = null;
                     
                     self.hide_container();
                 } // end of close_dialog()
@@ -3228,7 +2539,7 @@ var download_media_timeline = ( function () {
                         zip_request = null;
                     }
                     zip = null;
-                    MediaTimeline = null;
+                    TimelineObject = null;
                     
                     self.reset_flags();
                     self.reset_buttons();
@@ -3246,7 +2557,7 @@ var download_media_timeline = ( function () {
                         }
                     }  // end of _callback()
                     
-                    if ( ( ! min_id ) || ( ! max_id ) || ( total_tweet_counter <= 0 ) || ( ( ! filter_info.nomedia ) && ( total_image_counter <= 0 ) ) ) {
+                    if ( ( ! min_id ) || ( ! max_id ) || ( total_tweet_counter <= 0 ) || ( ( ! filter_info.nomedia ) && ( total_media_counter <= 0 ) ) ) {
                         _callback();
                         return;
                     }
@@ -3387,10 +2698,10 @@ var download_media_timeline = ( function () {
                     self.set_to_hide_added_logline();
                     
                     if ( self.is_for_likes_timeline ) {
-                        self.log( '[Stop]', min_datetime, '-', max_datetime, ' ( Tweet:', total_tweet_counter, '/ Media:', total_image_counter, ')' );
+                        self.log( '[Stop]', min_datetime, '-', max_datetime, ' ( Tweet:', total_tweet_counter, '/ Media:', total_media_counter, ')' );
                     }
                     else {
-                        self.log( '[Stop]', min_id, '-', max_id, ' ( Tweet:', total_tweet_counter, '/ Media:', total_image_counter, ')' );
+                        self.log( '[Stop]', min_id, '-', max_id, ' ( Tweet:', total_tweet_counter, '/ Media:', total_media_counter, ')' );
                     }
                     
                     request_save( function () {
@@ -3416,10 +2727,10 @@ var download_media_timeline = ( function () {
                     var is_limited = !! ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) );
                     
                     if ( self.is_for_likes_timeline ) {
-                        self.log( '[Complete' + ( is_limited  ? '(limited)' : '' ) + ']', min_datetime, '-', max_datetime, ' ( Tweet:', total_tweet_counter, '/ Media:', total_image_counter, ')' );
+                        self.log( '[Complete' + ( is_limited  ? '(limited)' : '' ) + ']', min_datetime, '-', max_datetime, ' ( Tweet:', total_tweet_counter, '/ Media:', total_media_counter, ')' );
                     }
                     else {
-                        self.log( '[Complete' + ( is_limited  ? '(limited)' : '' ) + ']', min_id, '-', max_id, ' ( Tweet:', total_tweet_counter, '/ Media:', total_image_counter, ')' );
+                        self.log( '[Complete' + ( is_limited  ? '(limited)' : '' ) + ']', min_id, '-', max_id, ' ( Tweet:', total_tweet_counter, '/ Media:', total_media_counter, ')' );
                     }
                     
                     request_save( function () {
@@ -3463,241 +2774,185 @@ var download_media_timeline = ( function () {
                 } // end of is_stop_download_requested()
                 
                 
-                function check_tweet_info( result ) {
+                async function check_fetched_tweet_info( tweet_info ) {
                     if ( is_close_dialog_requested() || is_stop_download_requested() ) {
                         return;
                     }
                     
-                    if ( 
-                        ( ! result ) ||
-                        ( ! result.tweet_info ) ||
-                        ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) )
-                    ) {
-                        download_completed( function () {
-                            clean_up();
-                        } );
+                    if ( ( ! tweet_info ) || ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) ) ) {
+                        download_completed( () => clean_up() );
                         return;
                     }
                     
-                    var current_tweet_info_fetch_result = result,
-                        current_tweet_info = result.tweet_info,
-                        current_image_result_map = {},
-                        current_image_download_counter = 0,
-                        current_tweet_action_date = '',
+                    let reacted_info = tweet_info.reacted_info,
+                        target_tweet_info = ( reacted_info.id ) ? reacted_info : tweet_info,
+                        reaction_info = ( reacted_info.id ) ? tweet_info : null,
+                        comparison_id = ( reaction_info ) ? reaction_info.id : target_tweet_info.id,
+                        comparison_datetime = ( reaction_info ) ? reaction_info.datetime : target_tweet_info.datetime,
                         is_matched_tweet = true;
                     
-                    switch ( current_tweet_info.media_type ) {
-                        case 'image' :
+                    if ( until_id && ( bignum_cmp( until_id, comparison_id ) <= 0 ) ) {
+                        return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
+                    }
+                    
+                    if ( since_id && ( bignum_cmp( comparison_id, since_id ) <= 0 ) ) {
+                        download_completed( () => clean_up() );
+                        return;
+                    }
+                    
+                    switch ( target_tweet_info.media_type ) {
+                        case MEDIA_TYPE.image :
                             if ( ! filter_info.image ) {
                                 is_matched_tweet = false;
                             }
                             break;
-                        
-                        case 'gif' :
+                            
+                        case MEDIA_TYPE.gif :
                             if ( ! filter_info.gif ) {
                                 is_matched_tweet = false;
                             }
                             break;
                         
-                        case 'video' :
+                        case MEDIA_TYPE.video :
                             if ( ! filter_info.video ) {
                                 is_matched_tweet = false;
                             }
                             break;
                         
-                        case 'nomedia' :
+                        case MEDIA_TYPE.nomedia :
                             if ( ! filter_info.nomedia ) {
                                 is_matched_tweet = false;
                             }
                             break;
                     }
                     
-                    if ( current_tweet_info.retweet_id ) {
-                        if ( ! filter_info.include_retweets ) {
-                            is_matched_tweet = false;
-                        }
-                    }
-                    
-                    if ( filter_info.is_for_notifications_timeline ) {
-                        if ( current_tweet_info.tweet_screen_name == logined_screen_name ) {
-                            is_matched_tweet = false;
+                    if ( is_matched_tweet ) {
+                        switch ( reacted_info.type ) {
+                            case REACTION_TYPE.retweet :
+                                if ( ! filter_info.include_retweets ) {
+                                    is_matched_tweet = false;
+                                }
+                                break;
                         }
                     }
                     
                     if ( ! is_matched_tweet ) {
-                        MediaTimeline.fetch_tweet_info( check_tweet_info );
-                        return;
+                        return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
                     }
                     
-                    if ( self.is_for_likes_timeline ) {
-                        current_tweet_action_date = format_date( like_id_to_date( result.media_timeline_parameters.max_position ), 'YYYY/MM/DD hh:mm:ss' );
-                        self.log( ( 1 + total_tweet_counter ) + '.', current_tweet_action_date + '(L) <-', current_tweet_info.datetime, current_tweet_info.tweet_url );
+                    if ( reacted_info.type == REACTION_TYPE.retweet ) {
+                        self.log( ( 1 + total_tweet_counter ) + '.', reaction_info.datetime + '(R) <-', target_tweet_info.datetime, target_tweet_info.tweet_url );
                     }
                     else {
-                        if ( self.is_search_timeline || ( ! filter_info.include_retweets ) || ( ! current_tweet_info.retweet_id ) ) {
-                            self.log( ( 1 + total_tweet_counter ) + '.', current_tweet_info.datetime, current_tweet_info.tweet_url );
-                        }
-                        else {
-                            var rt_date = tweet_id_to_date( current_tweet_info.retweet_id ),
-                                rt_datetime = ( rt_date ) ? format_date( rt_date, 'YYYY/MM/DD hh:mm:ss' ) : current_tweet_info.retweet_id;
-                            
-                            current_tweet_action_date = ( rt_date ) ? rt_datetime : '(ID:' + current_tweet_info.retweet_id + ')';
-                            self.log( ( 1 + total_tweet_counter ) + '.', rt_datetime + '(R) <-', current_tweet_info.datetime, current_tweet_info.tweet_url );
-                        }
+                        self.log( ( 1 + total_tweet_counter ) + '.', target_tweet_info.datetime, target_tweet_info.tweet_url );
                     }
                     
-                    function push_image_result( image_url, image_result ) {
-                        if ( ! image_result ) {
-                            image_result = {
-                                error : '[bug] unknown error'
-                            };
-                        }
-                        
-                        if ( image_url ) {
-                            if ( current_image_result_map[ image_url ] ) {
-                                return;
+                    if ( ( ! max_id ) || ( bignum_cmp( max_id, comparison_id ) < 0 ) ) {
+                        max_id = comparison_id;
+                        max_datetime = comparison_datetime;
+                    }
+                    
+                    if ( ( ! min_id ) || ( bignum_cmp( comparison_id, min_id ) < 0 ) ) {
+                        min_id = comparison_id;
+                        min_datetime = comparison_datetime;
+                    }
+                    
+                    total_tweet_counter ++;
+                    
+                    if ( 0 < target_tweet_info.media_list.length ) {
+                        for ( let media_index = 0; media_index < target_tweet_info.media_list.length; media_index ++ ) {
+                            let media = target_tweet_info.media_list[ media_index ],
+                                media_url = media.media_url,
+                                report_index = media_index + 1,
+                                csv_media_type,
+                                media_prefix,
+                                media_extension;
+                            
+                            switch ( media.media_type ) {
+                                case MEDIA_TYPE.image :
+                                    csv_media_type = 'Image';
+                                    media_prefix = 'img';
+                                    media_extension = get_img_extension( media_url );
+                                    break;
+                                
+                                case MEDIA_TYPE.gif :
+                                    csv_media_type = 'GIF';
+                                    media_prefix = 'gif';
+                                    media_extension = get_video_extension( media_url );
+                                    break;
+                                
+                                case MEDIA_TYPE.video :
+                                    csv_media_type = 'Video';
+                                    media_prefix = 'vid';
+                                    media_extension = get_video_extension( media_url );
+                                    break;
+                                
+                                default:
+                                    log_error( '[bug] unknown error => ignored', media );
+                                    continue;
                             }
                             
-                            if ( image_result.error && ( image_result.status_code == 429 ) ) {
-                                // 429: Too Many Requests ( "Rate limit exceeded" 時)
-                                self.log_hr();
-                                self.log( 'Stop: API error detected (status 429: Too Many Request)' );
+                            let timestamp = datetime_to_timestamp( target_tweet_info.datetime ),
+                                media_filename = [ target_tweet_info.screen_name, target_tweet_info.id, timestamp, media_prefix + report_index ].join( '-' ) + '.' + media_extension,
+                                download_error;
+                            
+                            if ( ! dry_run ) {
+                                let media_result = await new Promise( ( resolve, reject ) => {
+                                        fetch_url( media_url, {
+                                            responseType : 'arraybuffer',
+                                            
+                                            onload : ( response ) => {
+                                                resolve( {
+                                                    arraybuffer : response.response,
+                                                } );
+                                            },
+                                            
+                                            onerror : ( response ) => {
+                                                resolve( {
+                                                    error : response.status + ' ' + response.statusText,
+                                                } );
+                                            } // end of onerror()
+                                        } );
+                                    } );
                                 
-                                self.jq_button_stop.click();
-                                
-                                if ( is_stop_download_requested() || is_close_dialog_requested() ) {
-                                    return;
+                                if ( media_result.error ) {
+                                    download_error = media_result.error;
                                 }
                                 else {
-                                    log_error( '[bug] unknown error' );
-                                }
-                            }
-                            
-                            current_image_result_map[ image_url ] = image_result;
-                            
-                            current_image_download_counter ++;
-                            
-                            if ( current_image_download_counter < current_tweet_info.image_urls.length ) {
-                                return;
-                            }
-                        }
-                        
-                        var current_tweet_id = current_tweet_info.tweet_id,
-                            current_target_id = ( self.is_for_likes_timeline ) ? current_tweet_info_fetch_result.media_timeline_parameters.max_position : ( current_tweet_info.retweet_id || current_tweet_id ),
-                            report_index = 0,
-                            date;
-                        
-                        if ( ( ! max_id ) || ( bignum_cmp( max_id, current_target_id ) < 0 ) ) {
-                            max_id = current_target_id;
-                            
-                            if ( self.is_for_likes_timeline ) {
-                                max_datetime = format_date( like_id_to_date( max_id ), 'YYYY/MM/DD hh:mm:ss' );
-                            }
-                            else {
-                                max_datetime = current_tweet_info.datetime;
-                            }
-                        }
-                        
-                        if ( ( ! min_id ) || ( bignum_cmp( current_target_id, min_id ) < 0 ) ) {
-                            min_id = current_target_id;
-                            
-                            if ( self.is_for_likes_timeline ) {
-                                min_datetime = format_date( like_id_to_date( min_id ), 'YYYY/MM/DD hh:mm:ss' );
-                            }
-                            else {
-                                min_datetime = current_tweet_info.datetime;
-                            }
-                        }
-                        
-                        total_tweet_counter ++;
-                        total_image_counter += current_image_download_counter;
-                        
-                        if ( ( ! image_url ) || ( current_tweet_info.image_urls.length <= 0 ) ) {
-                            self.csv_push_row( {
-                                tweet_date : current_tweet_info.datetime,
-                                action_date : current_tweet_action_date,
-                                profile_name : current_tweet_info.tweet_profile_name,
-                                screen_name : '@' + current_tweet_info.tweet_screen_name,
-                                tweet_url : current_tweet_info.tweet_url,
-                                media_url : '',
-                                media_type : 'No media',
-                                media_filename : '',
-                                remarks : '',
-                                tweet_content : current_tweet_info.tweet_text,
-                                reply_number : ( current_tweet_info.reply_number ) ? current_tweet_info.reply_number : '',
-                                retweet_number : ( current_tweet_info.retweet_number ) ? current_tweet_info.retweet_number : '',
-                                like_number : ( current_tweet_info.like_number ) ? current_tweet_info.like_number : ''
-                            } );
-                            
-                            self.log( '  (no media)' );
-                        }
-                        else {
-                            $.each( current_tweet_info.image_urls, function ( index, image_url ) {
-                                report_index ++;
-                                
-                                var image_result = current_image_result_map[ image_url ],
-                                    media_type = current_tweet_info.media_type,
-                                    img_extension = ( media_type == 'image' ) ? get_img_extension( image_url ) : get_video_extension( image_url ),
-                                    media_prefix = ( media_type == 'gif' ) ? 'gif' : ( ( media_type == 'image' ) ? 'img' : 'vid' ),
-                                    is_api_url = /^https?:\/\/api\.twitter\.com\//.test( image_url ),
-                                    media_infos = current_tweet_info.media_infos[ index ],
-                                    image_filename = media_infos.image_filename,
-                                    media_url = ( is_api_url ) ? '-' : image_url;
-                                
-                                if ( media_type == 'image' ) {
-                                    if ( media_url.match( /^(.+)\.([^.:]+):?((?:[^:]+)?)$/ ) ) {
-                                        media_url = RegExp.$1 + '?format=' + RegExp.$2 + ( ( RegExp.$3 ) ? '&name=' + RegExp.$3 : '' );
-                                    }
-                                }
-                                
-                                self.csv_push_row( {
-                                    tweet_date : current_tweet_info.datetime,
-                                    action_date : current_tweet_action_date,
-                                    profile_name : current_tweet_info.tweet_profile_name,
-                                    screen_name : '@' + current_tweet_info.tweet_screen_name,
-                                    tweet_url : current_tweet_info.tweet_url,
-                                    media_url : media_url,
-                                    media_type : ( media_type == 'gif' ) ? 'GIF' : ( ( media_type == 'image' ) ? 'Image' : 'Video' ),
-                                    media_filename : ( ( ! image_filename ) || image_result.error || is_api_url ) ? '-' : image_filename,
-                                    remarks : ( image_result.error ) ? image_result.error : '',
-                                    tweet_content : current_tweet_info.tweet_text,
-                                    reply_number : ( current_tweet_info.reply_number ) ? current_tweet_info.reply_number : '',
-                                    retweet_number : ( current_tweet_info.retweet_number ) ? current_tweet_info.retweet_number : '',
-                                    like_number : ( current_tweet_info.like_number ) ? current_tweet_info.like_number : ''
-                                } );
-                                
-                                if ( image_result.error ) {
-                                    self.log( '  ' + media_prefix + report_index + ')', media_url, '=>', image_result.error );
-                                    return;
-                                }
-                                
-                                self.log( '  ' + media_prefix + report_index + ')', media_url );
-                                
-                                if ( dry_run ) {
-                                    return;
-                                }
-                                
-                                if ( zip && image_result.arraybuffer ) {
-                                    zip.file( image_filename, image_result.arraybuffer, {
-                                        date : current_tweet_info.zipdate
+                                    zip.file( media_filename, media_result.arraybuffer, {
+                                        date : adjust_date_for_zip( target_tweet_info.date ),
                                     } );
                                     
-                                    total_file_size += image_result.arraybuffer.byteLength;
-                                    log_debug( image_url, '=>', image_result.arraybuffer.byteLength, 'byte / total: ', total_file_size , 'byte' );
+                                    total_file_size += media_result.arraybuffer.byteLength;
+                                    log_debug( media_url, '=>', media_result.arraybuffer.byteLength, 'byte / total: ', total_file_size , 'byte' );
                                     
-                                    delete image_result.arraybuffer;
-                                    image_result.arraybuffer = null;
+                                    delete media_result.arraybuffer;
+                                    media_result.arraybuffer = null;
                                 }
-                                else if ( zip_request && Number.isFinite( image_result.size ) ) {
-                                    total_file_size += image_result.size;
-                                    
-                                    log_debug( image_url, '=>', image_result.size, 'byte / total: ', total_file_size , 'byte' );
-                                }
-                                else {
-                                    self.log( '  ' + media_prefix + report_index + ')', image_url, '=> zip / zip_request was already removed' );
-                                }
-                                
+                            }
+                            
+                            self.csv_push_row( {
+                                tweet_date : target_tweet_info.datetime,
+                                action_date : ( reaction_info ) ? reaction_info.datetime : '',
+                                profile_name : target_tweet_info.user_name,
+                                screen_name : '@' + target_tweet_info.screen_name,
+                                tweet_url : target_tweet_info.tweet_url,
+                                media_url : media_url,
+                                media_type : csv_media_type,
+                                media_filename : ( media_filename ) ? media_filename : '-',
+                                remarks : download_error || '',
+                                tweet_content : target_tweet_info.text,
+                                reply_number : target_tweet_info.reply_count || '',
+                                retweet_number : target_tweet_info.retweet_count || '',
+                                like_number : target_tweet_info.like_count || '',
                             } );
+                            
+                            if ( download_error ) {
+                                self.log( '  ' + media_prefix + report_index + '\x29', media_url, '=>', download_error );
+                            }
+                            else {
+                                self.log( '  ' + media_prefix + report_index + '\x29', media_url );
+                            }
                             
                             if ( ( OPTIONS.DOWNLOAD_SIZE_LIMIT_MB ) && ( OPTIONS.DOWNLOAD_SIZE_LIMIT_MB * 1000000 <= total_file_size ) ) {
                                 self.log_hr();
@@ -3712,311 +2967,32 @@ var download_media_timeline = ( function () {
                                     log_error( '[bug] unknown error' );
                                 }
                             }
-                        }
-                        
-                        MediaTimeline.fetch_tweet_info( check_tweet_info );
-                    
-                    } // end of push_image_result()
-                    
-                    
-                    function load_image( image_url_index, first_image_url, current_image_url ) {
-                        if ( ! current_image_url ) {
-                            current_image_url = first_image_url;
-                        }
-                        
-                        var extension_list = [ 'png', 'jpg', 'gif' ],
-                            next_extension_map = {
-                                'png' : 'gif'
-                            ,   'gif' : 'jpg'
-                            ,   'jpg' : 'png'
-                            },
-                            first_extension = get_img_extension( first_image_url, extension_list ),
-                            current_extension = get_img_extension( current_image_url, extension_list ),
-                            media_type = current_tweet_info.media_type,
-                            media_extension = ( media_type == 'image' ) ? current_extension : get_video_extension( current_image_url ),
-                            media_prefix = ( media_type == 'gif' ) ? 'gif' : ( ( media_type == 'image' ) ? 'img' : 'vid' ),
-                            timestamp = datetime_to_timestamp( current_tweet_info.datetime ),
-                            image_filename = [ current_tweet_info.tweet_screen_name, current_tweet_info.tweet_id, timestamp, media_prefix + ( image_url_index + 1 ) ].join( '-' ) + '.' + media_extension;
-                        
-                        current_tweet_info.image_urls[ image_url_index ] = current_image_url;
-                        current_tweet_info.media_infos[ image_url_index ] = {
-                            timestamp : timestamp,
-                            image_filename : image_filename
-                        };
-                        
-                        if ( dry_run ) {
-                            push_image_result( first_image_url, {} );
-                            return;
-                        }
                             
-                        if ( zip_request ) {
-                            zip_request.file( {
-                                url : current_image_url,
-                                filename : image_filename,
-                                zip_options : {
-                                    date : current_tweet_info.zipdate
-                                }
-                            }, function ( response ) {
-                                if ( response.error ) {
-                                    // 元の拡張子が png でも、png:orig が取得できない場合がある
-                                    // → gif:orig なら取得できるケース有り・ステータスチェックし、エラー時にはリトライする
-                                    var next_extension = next_extension_map[ current_extension ];
-                                    
-                                    if ( ( ! next_extension ) || ( next_extension == first_extension ) ) {
-                                        current_tweet_info.image_urls[ image_url_index ] = first_image_url;
-                                        push_image_result( first_image_url, response );
-                                        return;
-                                    }
-                                    load_image( image_url_index, first_image_url, current_image_url.replace( '.' + current_extension, '.' + next_extension ) );
-                                    return;
-                                }
-                                push_image_result( current_image_url, response );
-                            } );
+                            total_media_counter ++;
                         }
-                        else {
-                            fetch_url( current_image_url, {
-                                responseType : 'arraybuffer'
-                            ,   onload : function ( response ) {
-                                    if ( response.status < 200 || 300 <= response.status ) {
-                                        // 元の拡張子が png でも、png:orig が取得できない場合がある
-                                        // → gif:orig なら取得できるケース有り・ステータスチェックし、エラー時にはリトライする
-                                        var next_extension = next_extension_map[ current_extension ];
-                                        
-                                        if ( ( ! next_extension ) || ( next_extension == first_extension ) ) {
-                                            current_tweet_info.image_urls[ image_url_index ] = first_image_url;
-                                            push_image_result( first_image_url, {
-                                                error : response.status + ' ' + response.statusText
-                                            } );
-                                            return;
-                                        }
-                                        load_image( image_url_index, first_image_url, current_image_url.replace( '.' + current_extension, '.' + next_extension ) );
-                                        return;
-                                    }
-                                    push_image_result( current_image_url, {
-                                        arraybuffer : response.response
-                                    } );
-                                } // end of onload()
-                            ,   onerror : function ( response ) {
-                                    push_image_result( current_image_url, {
-                                        error : response.status + ' ' + response.statusText
-                                    } );
-                                } // end of onerror()
-                            } );
-                        }
-                    } // end of load_image()
-                    
-                    
-                    switch ( current_tweet_info.media_type ) {
-                        case 'image' :
-                            $.each( current_tweet_info.image_urls, function ( index, image_url ) {
-                                load_image( index, image_url );
-                            } );
-                            break;
-                        
-                        case 'gif' :
-                            $.each( current_tweet_info.image_urls, function ( index, video_info_url ) {
-                                if ( current_tweet_info.media_quick ) {
-                                    load_image( index, video_info_url );
-                                    return;
-                                }
-                                
-                                if ( self.media_url_cache[ video_info_url ] ) {
-                                    load_image( index, self.media_url_cache[ video_info_url ] );
-                                    return;
-                                }
-                                
-                                twitter_api_get_json( video_info_url )
-                                .done( function ( json, textStatus, jqXHR ) {
-                                    var video_url = json.track.playbackUrl;
-                                    
-                                    current_tweet_info.image_urls[ index ] = video_url;
-                                    current_tweet_info.video_info = json.track;
-                                    
-                                    if ( is_video_url( video_url ) ) {
-                                        self.media_url_cache[ video_info_url ] = video_url;
-                                        load_image( index, video_url );
-                                    }
-                                    else {
-                                        push_image_result( video_url, {
-                                            error : 'not supported'
-                                        } );
-                                    }
-                                } )
-                                .fail( function ( jqXHR, textStatus, errorThrown ) {
-                                    log_error( video_info_url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
-                                    push_image_result( video_info_url, {
-                                        error : 'API error: ' + jqXHR.status + ' ' + jqXHR.statusText,
-                                        status_code : jqXHR.status
-                                    } );
-                                } )
-                                .always( function () {
-                                } );
-                            } );
-                            break;
-                        
-                        case 'video' :
-                            switch ( current_tweet_info.media_source ) {
-                                case 'vine' :
-                                    $.each( current_tweet_info.image_urls, function ( index, video_info_url ) {
-                                        if ( self.media_url_cache[ video_info_url ] ) {
-                                            load_image( index, self.media_url_cache[ video_info_url ] );
-                                            return;
-                                        }
-                                        
-                                        twitter_api_get_json( video_info_url )
-                                        .done( function ( json, textStatus, jqXHR ) {
-                                            var video_url = json.track.playbackUrl;
-                                            
-                                            current_tweet_info.image_urls[ index ] = video_url;
-                                            current_tweet_info.video_info = json.track;
-                                            
-                                            if ( is_video_url( video_url ) ) {
-                                                self.media_url_cache[ video_info_url ] = video_url;
-                                                load_image( index, video_url );
-                                            }
-                                            else {
-                                                push_image_result( video_url, {
-                                                    error : 'not supported'
-                                                } );
-                                            }
-                                        } )
-                                        .fail( function ( jqXHR, textStatus, errorThrown ) {
-                                            log_error( video_info_url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
-                                            push_image_result( video_info_url, {
-                                                error : 'API error: ' + jqXHR.status + ' ' + jqXHR.statusText,
-                                                status_code : jqXHR.status
-                                            } );
-                                        } )
-                                        .always( function () {
-                                        } );
-                                    } );
-                                    break;
-                                
-                                default :
-                                    $.each( current_tweet_info.image_urls, function ( index, tweet_info_url ) {
-                                        if ( self.media_url_cache[ tweet_info_url ] ) {
-                                            load_image( index, self.media_url_cache[ tweet_info_url ] );
-                                            return;
-                                        }
-                                        
-                                        twitter_api_get_json( tweet_info_url )
-                                        .done( function ( json, textStatus, jqXHR ) {
-                                            var video_info = null,
-                                                video_url = null,
-                                                variants = [],
-                                                max_bitrate = -1,
-                                                tweet_id;
-                                            
-                                            try {
-                                                video_info = json.extended_entities.media[ 0 ].video_info;
-                                                variants = video_info.variants;
-                                                
-                                                variants.forEach( function ( variant ) {
-                                                    if ( ( variant.content_type == 'video/mp4' ) && ( variant.bitrate ) && ( max_bitrate < variant.bitrate ) ) {
-                                                        video_url = variant.url;
-                                                        max_bitrate = variant.bitrate;
-                                                    }
-                                                } );
-                                            }
-                                            catch ( error ) {
-                                                //log_error( tweet_info_url, error );
-                                                // TODO: 外部動画等は未サポート
-                                            }
-                                            
-                                            current_tweet_info.video_info = video_info;
-                                            
-                                            if ( video_url ) {
-                                                self.media_url_cache[ tweet_info_url ] = video_url;
-                                                current_tweet_info.image_urls[ index ] = video_url;
-                                                load_image( index, video_url );
-                                            }
-                                            else {
-                                                /*
-                                                //push_image_result( tweet_info_url, {
-                                                //    error : 'not supported'
-                                                //} );
-                                                */
-                                                // API 1.1 で取得できない場合、API 2 で試行
-                                                
-                                                try {
-                                                    tweet_id = tweet_info_url.match( /&id=(\d+)/ )[ 1 ];
-                                                }
-                                                catch ( error ) {
-                                                    log_error( tweet_info_url, error );
-                                                    
-                                                    push_image_result( tweet_info_url, {
-                                                        error : 'not supported'
-                                                    } );
-                                                    return;
-                                                }
-                                                
-                                                api2_get_tweet_info( tweet_id )
-                                                .done( function ( json, textStatus, jqXHR ) {
-                                                    var video_info = null,
-                                                        video_url = null,
-                                                        variants = [],
-                                                        max_bitrate = -1;
-                                                    
-                                                    try {
-                                                        video_info = json.extended_entities.media[ 0 ].video_info;
-                                                        variants = video_info.variants;
-                                                        
-                                                        variants.forEach( function ( variant ) {
-                                                            if ( ( variant.content_type == 'video/mp4' ) && ( variant.bitrate ) && ( max_bitrate < variant.bitrate ) ) {
-                                                                video_url = variant.url;
-                                                                max_bitrate = variant.bitrate;
-                                                            }
-                                                        } );
-                                                    }
-                                                    catch ( error ) {
-                                                        log_error( tweet_info_url, error );
-                                                        // TODO: 外部動画等は未サポート
-                                                        log_info( 'response(json):', json );
-                                                    }
-                                                    
-                                                    current_tweet_info.video_info = video_info;
-                                                    
-                                                    if ( video_url ) {
-                                                        self.media_url_cache[ tweet_info_url ] = video_url;
-                                                        current_tweet_info.image_urls[ index ] = video_url;
-                                                        load_image( index, video_url );
-                                                    }
-                                                    else {
-                                                        push_image_result( tweet_info_url, {
-                                                            error : 'not supported'
-                                                        } );
-                                                    }
-                                                } )
-                                                .fail( function ( jqXHR, textStatus, errorThrown ) {
-                                                    log_error( tweet_info_url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
-                                                    push_image_result( tweet_info_url, {
-                                                        error : 'API error: ' + jqXHR.status + ' ' + jqXHR.statusText,
-                                                        status_code : jqXHR.status
-                                                    } );
-                                                } )
-                                                .always( function () {
-                                                } );
-                                            }
-                                        } )
-                                        .fail( function ( jqXHR, textStatus, errorThrown ) {
-                                            log_error( tweet_info_url, textStatus, jqXHR.status + ' ' + jqXHR.statusText );
-                                            push_image_result( tweet_info_url, {
-                                                error : 'API error: ' + jqXHR.status + ' ' + jqXHR.statusText,
-                                                status_code : jqXHR.status
-                                            } );
-                                        } )
-                                        .always( function () {
-                                        } );
-                                    } );
-                                    break;
-                            }
-                            break;
-                        
-                        case 'nomedia' :
-                            push_image_result( null, { nomedia : true } );
-                            break;
                     }
-                } // end of check_tweet_info()
+                    else {
+                        self.csv_push_row( {
+                            tweet_date : target_tweet_info.datetime,
+                            action_date : ( reaction_info ) ? reaction_info.datetime : '',
+                            profile_name : target_tweet_info.user_name,
+                            screen_name : '@' + target_tweet_info.screen_name,
+                            tweet_url : target_tweet_info.tweet_url,
+                            media_url : '',
+                            media_type : 'No media',
+                            media_filename : '',
+                            remarks : '',
+                            tweet_content : target_tweet_info.text,
+                            reply_number : target_tweet_info.reply_count || '',
+                            retweet_number : target_tweet_info.retweet_count || '',
+                            like_number : target_tweet_info.like_count || '',
+                        } );
+                        
+                        self.log( '  (no media)' );
+                    }
+                    
+                    return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
+                } // end of check_fetched_tweet_info()
                 
                 
                 if ( since_id && until_id && ( bignum_cmp( until_id, since_id ) <= 0 ) ) {
@@ -4031,7 +3007,14 @@ var download_media_timeline = ( function () {
                 self.stopping = false;
                 self.closing = false;
                 
-                MediaTimeline.fetch_tweet_info( check_tweet_info );
+                TimelineObject.fetch_tweet_info()
+                .then( ( tweet_info ) => {
+                    check_fetched_tweet_info( tweet_info );
+                } )
+                .catch( ( error ) => {
+                    self.log( '[Error]', error );
+                    check_fetched_tweet_info( null );
+                } );
                 
                 return self;
             } // end of start_download()
@@ -4058,9 +3041,6 @@ var download_media_timeline = ( function () {
                 self.jq_button_container.find( 'input[type=checkbox]' ).prop( 'disabled', false );
                 self.jq_checkbox_container.find( 'input[type=checkbox]' ).prop( 'disabled', false );
                 
-                if ( self.MediaTimeline ) {
-                    self.MediaTimeline.stop();
-                }
                 self.stopping = true;
                 
                 return self;
@@ -4075,9 +3055,6 @@ var download_media_timeline = ( function () {
                 self.jq_checkbox_container.find( 'input[type=checkbox]' ).prop( 'disabled', true );
                 
                 if ( self.downloading ) {
-                    if ( self.MediaTimeline ) {
-                        self.MediaTimeline.stop();
-                    }
                     self.closing = true;
                     
                     return self;
@@ -4099,10 +3076,14 @@ var download_media_timeline = ( function () {
             options = {};
         }
         
-        initialize_twitter_api()
-        .then( function () {
-            MediaDownload.show_container( options );
-        } );
+        /*
+        //initialize_twitter_api()
+        //.then( function () {
+        //    MediaDownload.show_container( options );
+        //} );
+        */
+        
+        MediaDownload.show_container( options );
     } // end of download_media_timeline()
     
     
@@ -4120,6 +3101,7 @@ var check_timeline_headers = ( function () {
             .attr( {
                 href : '#'
             ,   title : OPTIONS.DOWNLOAD_BUTTON_HELP_TEXT
+            ,   'data-timeline-type' : TIMELINE_TYPE.unknown
             } )
             /*
             .css( {
@@ -4139,6 +3121,7 @@ var check_timeline_headers = ( function () {
                 download_media_timeline( {
                     is_for_likes_timeline : jq_button.hasClass( 'likes' )
                 ,   is_for_notifications_timeline : jq_button.hasClass( 'notifications' )
+                ,   timeline_type : jq_button.attr( 'data-timeline-type' )
                 } );
                 
                 return false;
@@ -4148,10 +3131,13 @@ var check_timeline_headers = ( function () {
     
     
     function check_search_timeline( jq_node ) {
-        if ( ! judge_search_timeline() ) {
+        if ( ! CLASS_TIMELINE_SET[ TIMELINE_TYPE.search ] ) {
             return false;
         }
         
+        if ( ! judge_search_timeline() ) {
+            return false;
+        }
         var jq_target_container = $();
         
         jq_target_container = $( 'div[data-testid="primaryColumn"] > div > div > div:first' );
@@ -4166,7 +3152,8 @@ var check_timeline_headers = ( function () {
         jq_target_container.find( '.' + button_container_class_name ).remove();
         
         var jq_button = jq_button_template.clone( true )
-                .text( OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG ),
+                .text( OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG )
+                .attr( 'data-timeline-type', TIMELINE_TYPE.search ),
             
             jq_button_container;
         
@@ -4187,6 +3174,10 @@ var check_timeline_headers = ( function () {
     
     
     function check_profile_nav( jq_node ) {
+        if ( ( ! CLASS_TIMELINE_SET[ TIMELINE_TYPE.user ] ) && ( ! CLASS_TIMELINE_SET[ TIMELINE_TYPE.likes ] ) ) {
+            return false;
+        }
+        
         if ( ! judge_profile_timeline() ) {
             return false;
         }
@@ -4207,23 +3198,31 @@ var check_timeline_headers = ( function () {
         jq_target_container.find( '.' + button_container_class_name ).remove();
         
         var jq_button = jq_button_template.clone( true )
-                .text( OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG ),
+                .text( OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG )
+                .attr( 'data-timeline-type', TIMELINE_TYPE.user ),
             
             jq_likes_button = jq_button_template.clone( true )
                 .addClass( 'likes' )
                 .text( OPTIONS.LIKES_DOWNLOAD_BUTTON_TEXT_LONG )
-                .attr( 'title', OPTIONS.LIKES_DOWNLOAD_BUTTON_HELP_TEXT ),
+                .attr( 'title', OPTIONS.LIKES_DOWNLOAD_BUTTON_HELP_TEXT )
+                .attr( 'data-timeline-type', TIMELINE_TYPE.likes ),
             
             jq_button_container,
             jq_insert_point = jq_target_container.find( '.ProfileNav-item--more' );
         
         jq_button_container = $( '<div />' )
-            .append( jq_button )
-            .append( jq_likes_button )
             .css( {
                 'right' : '130px'
             ,   'bottom' : '2px'
             } );
+        
+        if ( CLASS_TIMELINE_SET[ TIMELINE_TYPE.user ] ) {
+            jq_button_container.append( jq_button );
+        }
+        
+        if ( CLASS_TIMELINE_SET[ TIMELINE_TYPE.likes ] ) {
+            jq_button_container.append( jq_likes_button );
+        }
         
         jq_button
             .css( {
@@ -4245,6 +3244,10 @@ var check_timeline_headers = ( function () {
     
     
     function check_notifications_timeline( jq_node ) {
+        if ( ! CLASS_TIMELINE_SET[ TIMELINE_TYPE.notifications ] ) {
+            return false;
+        }
+        
         if ( ! judge_notifications_timeline() ) {
             return false;
         }
@@ -4265,6 +3268,7 @@ var check_timeline_headers = ( function () {
         var jq_button = jq_button_template.clone( true )
                 .addClass( 'notifications' )
                 .attr( 'title', OPTIONS.MENTIONS_DOWNLOAD_BUTTON_HELP_LONG )
+                .attr( 'data-timeline-type', TIMELINE_TYPE.notifications )
                 .css( {
                 } ),
             
@@ -5151,6 +4155,11 @@ function initialize( user_options ) {
         return;
     }
     
+    // 2020.08.14: 不安定なオプションの固定化
+    Object.assign( OPTIONS, {
+        ENABLE_VIDEO_DOWNLOAD : true,
+        ENABLE_ZIPREQUEST : false,
+    } );
     
     function initialize_global_variables( callback ) {
         var global_names = [ 'limit_tweet_number', 'support_image', 'support_gif', 'support_video', 'support_nomedia', 'include_retweets', 'dry_run' ],

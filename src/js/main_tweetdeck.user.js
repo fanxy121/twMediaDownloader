@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Twitter Media Downloader for TweetDeck
 // @description     Download media files on TweetDeck.
-// @version         0.1.4.3
+// @version         0.1.4.7
 // @namespace       https://memo.furyutei.work/
 // @author          furyu
 // @include         https://tweetdeck.twitter.com/*
@@ -15,9 +15,9 @@
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/decimal.js/7.3.0/decimal.min.js
-// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/sha1.js
-// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/oauth.js
-// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/twitter-api.js
+// @require         https://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/sha1.js
+// @require         https://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/oauth.js
+// @require         https://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/twitter-api.js
 // ==/UserScript==
 
 /*
