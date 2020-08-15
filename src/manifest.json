@@ -22,7 +22,7 @@
         }
     ,   {
             "matches" : [ "*://twitter.com/*", "*://tweetdeck.twitter.com/*", "*://pbs.twimg.com/media/*" ]
-        ,   "js" : [ "js/decimal.min.js", "js/jszip.min.js", "js/zip_request_legacy.js", "js/timeline.js", "js/init.js" ]
+        ,   "js" : [ "js/decimal.min.js", "js/jszip.min.js", "js/zip_request_legacy.js", "js/init.js", "js/timeline.js" ]
         ,   "run_at" : "document_start"
         ,   "all_frames" : true
         }

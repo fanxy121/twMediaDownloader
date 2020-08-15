@@ -2402,9 +2402,8 @@ var download_media_timeline = ( function () {
                     
                     zip = null,
                     csv = self.csv = object_extender( Csv ).init(),
-                    date_ms,
                     
-                    fetch_counter = 0;
+                    fetched_tweet_counter = 0;
                 
                 if ( self.is_for_likes_timeline ) {
                     if ( since_id ) {
@@ -2778,8 +2777,8 @@ var download_media_timeline = ( function () {
                         return;
                     }
                     
-                    fetch_counter ++;
-                    self.update_status_bar( 'Searching ... ' + fetch_counter );
+                    fetched_tweet_counter ++;
+                    self.update_status_bar( 'Searching ... ' + fetched_tweet_counter );
                     
                     let reacted_info = tweet_info.reacted_info,
                         target_tweet_info,
@@ -2863,11 +2862,13 @@ var download_media_timeline = ( function () {
                         return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
                     }
                     
+                    total_tweet_counter ++;
+                    
                     if ( reacted_info.type == REACTION_TYPE.retweet ) {
-                        self.log( ( 1 + total_tweet_counter ) + '.', reaction_info.datetime + '(R) <-', target_tweet_info.datetime, target_tweet_info.tweet_url );
+                        self.log( total_tweet_counter + '.', reaction_info.datetime + '(R) <-', target_tweet_info.datetime, target_tweet_info.tweet_url );
                     }
                     else {
-                        self.log( ( 1 + total_tweet_counter ) + '.', target_tweet_info.datetime, target_tweet_info.tweet_url );
+                        self.log( total_tweet_counter + '.', target_tweet_info.datetime, target_tweet_info.tweet_url );
                     }
                     
                     if ( ( ! max_id ) || ( bignum_cmp( max_id, comparison_id ) < 0 ) ) {
@@ -2879,8 +2880,6 @@ var download_media_timeline = ( function () {
                         min_id = comparison_id;
                         min_datetime = comparison_datetime;
                     }
-                    
-                    total_tweet_counter ++;
                     
                     if ( 0 < target_tweet_info.media_list.length ) {
                         for ( let media_index = 0; media_index < target_tweet_info.media_list.length; media_index ++ ) {
@@ -3035,7 +3034,7 @@ var download_media_timeline = ( function () {
                 self.stopping = false;
                 self.closing = false;
                 
-                fetch_counter = 0;
+                fetched_tweet_counter = 0;
                 
                 TimelineObject.fetch_tweet_info()
                 .then( ( tweet_info ) => {

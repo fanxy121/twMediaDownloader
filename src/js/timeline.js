@@ -17,6 +17,10 @@ const
     // TODO: class 関数内で self を使っているが、window.self が参照できるため、定義し忘れていてもエラーにならず気づきにくい
     // →暫定的に const self を undefined で定義して window.self への参照を切る
     
+    IS_WEB_EXTENSION = ( () => {
+        return context_global.is_web_extension || context_global.is_chrome_extension;
+    } )(),
+    
     use_agent = navigator.userAgent.toLowerCase(),
     IS_FIREFOX = ( 0 <= use_agent.toLowerCase().indexOf( 'firefox' ) ),
     
@@ -93,15 +97,15 @@ const
         throw new Error( message );
     },
     
-    chrome = ( () => {
+    browser = ( () => {
         const
-            chrome = ( this.browser && this.browser.runtime ) ? this.browser : this.chrome; // 注: Firefox の content_scripts 内では this !== window
+            browser = ( this.browser && this.browser.runtime ) ? this.browser : this.chrome; // 注: Firefox の content_scripts 内では this !== window
         
-        if ( ( ! chrome ) || ( ! chrome.runtime ) ) {
+        if ( IS_WEB_EXTENSION && ( ( ! browser ) || ( ! browser.runtime ) ) ) {
             exit_for_unsupported();
         }
         
-        return chrome;
+        return browser;
     } )(),
     
     Decimal = ( () => {
@@ -418,17 +422,19 @@ const
             const
                 self = this;
             
-            /*
-            //let result = await fetch( url, options ).then( ( response ) => { json : response.json() } ).catch( error => { error : error } );
-            //
-            // Chrome において戻り値が null になる→レスポンスボディが空のため、response.json() でエラーが発生
-            // > Cross-Origin Read Blocking (CORB) blocked cross-origin response <url> with MIME type application/json. See https://www.chromestatus.com/feature/5629709824032768 for more details.
-            // 参考：
-            //   [Changes to Cross-Origin Requests in Chrome Extension Content Scripts - The Chromium Projects](https://www.chromium.org/Home/chromium-security/extension-content-script-fetches)
-            //   [Cross-Origin Read Blocking (CORB) とは - ASnoKaze blog](https://asnokaze.hatenablog.com/entry/2018/04/10/205717)
-            */
-            let result = await new Promise( ( resolve, reject ) => {
-                    chrome.runtime.sendMessage( {
+            let result;
+
+            if ( IS_WEB_EXTENSION && browser ) {
+                /*
+                // fetch() を使用した場合、Chrome において戻り値が null になる→レスポンスボディが空のため、response.json() でエラーが発生
+                // > Cross-Origin Read Blocking (CORB) blocked cross-origin response <url> with MIME type application/json. See https://www.chromestatus.com/feature/5629709824032768 for more details.
+                //
+                // 参考：
+                //   [Changes to Cross-Origin Requests in Chrome Extension Content Scripts - The Chromium Projects](https://www.chromium.org/Home/chromium-security/extension-content-script-fetches)
+                //   [Cross-Origin Read Blocking (CORB) とは - ASnoKaze blog](https://asnokaze.hatenablog.com/entry/2018/04/10/205717)
+                */
+                result = await new Promise( ( resolve, reject ) => {
+                    browser.runtime.sendMessage( {
                         type : 'FETCH_JSON',
                         url : url,
                         options : options,
@@ -439,6 +445,17 @@ const
                         // → manifest.json に『"incognito" : "split"』が必要
                     } );
                 } );
+            }
+            else {
+                result = await fetch( url, options )
+                    .then( response => response.json() )
+                    .then( ( json ) => {
+                        return { json : json };
+                    } )
+                    .catch( ( error ) => {
+                        return { error : error };
+                    } );
+            }
             
             if ( result.error ) {
                 log_error( 'Error in fetch_json()', url, options, result.error );
@@ -921,7 +938,7 @@ const
                     filters.push( 'card_name:animated_gif' );
                 }
                 if ( filter_info.video ) {
-                    filters.push( 'filter:videos' );
+                    //filters.push( 'filter:videos' );
                     filters.push( 'filter:native_video' );
                     filters.push( 'filter:vine' );
                 }
@@ -938,7 +955,7 @@ const
             const
                 self = this;
             
-            log_info( 'stop(): update timeline_status from:', self.timeline_status, 'to:', TIMELINE_STATUS.stop );
+            log_debug( 'stop(): update timeline_status from:', self.timeline_status, 'to:', TIMELINE_STATUS.stop );
             
             self.timeline_status = TIMELINE_STATUS.stop;
         } // end of stop()
