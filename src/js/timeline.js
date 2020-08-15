@@ -219,8 +219,9 @@ const
     TWEPOCH_OFFSET_SEC = Math.ceil( TWEPOCH_OFFSET_MSEC / 1000 ), // 1288834974.657 sec (2011.11.04 01:42:54(UTC)) (via http://www.slideshare.net/pfi/id-15755280)
     ID_THRESHOLD = '300000000000000', // 2010.11.04 22時(UTC)頃に、IDが 30000000000以下から300000000000000以上に切り替え
     DEFAULT_UNTIL_ID = '9153891586667446272', // // datetime_to_tweet_id(Date.parse( '2080-01-01T00:00:00.000Z' )) => 9153891586667446272
+    LIKE_ID_INC_PER_MSEC = Decimal.pow( 2, 20 ), // Like ID（/2/timeline/favorites/<usr_id>のsortIndex）の、ミリ秒毎の増加分
     
-    get_tweet_id_from_utc_msec = ( utc_msec ) => {
+    convert_utc_msec_to_tweet_id = ( utc_msec ) => {
         if ( ! utc_msec ) {
             utc_msec = Date.now();
         }
@@ -231,11 +232,11 @@ const
         }
         
         return bignum_tweet_id.toString();
-    }, // end of get_tweet_id_from_utc_msec()
+    }, // end of convert_utc_msec_to_tweet_id()
     
-    get_date_from_tweet_id = ( tweet_id ) => {
+    convert_tweet_id_to_utc_msec = ( tweet_id ) => {
         if ( ! tweet_id ) {
-            return new Date();
+            return Date.now();
         }
         let bignum_tweet_id = new Decimal( tweet_id );
         
@@ -243,12 +244,30 @@ const
             bignum_tweet_id = new Decimal( ID_THRESHOLD );
         }
         
-        return new Date( parseInt( bignum_tweet_id.div( ID_INC_PER_MSEC ).floor().add( TWEPOCH_OFFSET_MSEC ), 10 ) );
-    }, // end of get_date_from_tweet_id()
+        return parseInt( bignum_tweet_id.div( ID_INC_PER_MSEC ).floor().add( TWEPOCH_OFFSET_MSEC ), 10 );
+    }, // end of convert_tweet_id_to_utc_msec()
     
-    get_utc_msec_from_tweet_id = ( tweet_id ) => {
-        return get_date_from_tweet_id( tweet_id ).getTime();
-    }, // end of get_utc_msec_from_tweet_id()
+    convert_tweet_id_to_date = ( tweet_id ) => {
+        return new Date( convert_tweet_id_to_utc_msec( tweet_id ) );
+    }, // end of convert_tweet_id_to_date()
+    
+    convert_utc_msec_to_like_id = ( utc_msec ) => {
+        if ( ! utc_msec ) {
+            utc_msec = Date.now();
+        }
+        return Decimal.mul( utc_msec, LIKE_ID_INC_PER_MSEC ).toString();
+    }, // end of convert_utc_msec_to_like_id()
+    
+    convert_like_id_to_utc_msec = ( like_id ) => {
+        if ( ! like_id ) {
+            return Date.now();
+        }
+        return parseInt( Decimal.div( like_id, LIKE_ID_INC_PER_MSEC ).floor().toString(), 10 );
+    }, // end of convert_like_id_to_utc_msec ()
+    
+    convert_like_id_to_date = ( like_id ) => {
+        return new Date( convert_like_id_to_utc_msec( like_id ) );
+    }, // end of convert_like_id_to_date()
     
     wait = async ( wait_msec ) => {
         if ( wait_msec <= 0 ) {
@@ -311,8 +330,7 @@ const
     TWITTER_API = new class {
         constructor() {
             const
-                self = this,
-                current_time_msec = Date.now();
+                self = this;
             
             Object.assign( self, {
                 API_AUTHORIZATION_BEARER : 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
@@ -359,12 +377,19 @@ const
                         min_delay_ms : self.TWITTER_API_DELAY_VERY_LONG,
                         max_retry : 3,
                     },
+                    
+                    [ TIMELINE_TYPE.likes ] : {
+                        url_template : 'https://api.twitter.com/2/timeline/favorites/#USER_ID#.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_quote_count=true&include_reply_count=1&tweet_mode=extended&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&send_error_codes=true&simple_quoted_tweet=true&sorted_by_time=true&count=#COUNT#&ext=mediaStats%2ChighlightedLabel',
+                        tweet_number : { default : 20, limit : 40 },
+                        min_delay_ms : self.TWITTER_API_DELAY_LONG,
+                        max_retry : 3,
+                    },
                 }
             } );
             
             Object.assign( self, {
                 language : '',
-                api_called_infos : Object.keys( TIMELINE_TYPE ).reduce( ( api_called_infos, type ) => ( api_called_infos[ TIMELINE_TYPE[ type ] ] = { count : 0, last_time_msec : current_time_msec, last_error : null } ) &&  api_called_infos, {} ),
+                api_called_infos : Object.keys( TIMELINE_TYPE ).reduce( ( api_called_infos, type ) => ( api_called_infos[ TIMELINE_TYPE[ type ] ] = { count : 0, last_time_msec : 0, last_error : null } ) &&  api_called_infos, {} ),
             } );
             
             return self;
@@ -416,7 +441,7 @@ const
             return await self.fetch_timeline_common( timeline_type, api_url );
         } // end of fetch_notifications_timeline()
         
-        async fetch_likes_legacy_timeline( max_id, count ) {
+        async fetch_likes_legacy_timeline( user_id, screen_name, max_id, count ) {
             const
                 self = this,
                 timeline_type = TIMELINE_TYPE.likes_legacy,
@@ -426,10 +451,26 @@ const
                 count = api_def.tweet_number.default;
             }
             
-            let api_url = api_def.url_template.replace( /#COUNT#/g, count ) + ( /^\d+$/.test( max_id || '' ) ? '&max_id=' + max_id : '' );
+            let api_url = ( api_def.url_template + ( ( user_id ) ? '&user_id=' + encodeURIComponent( user_id ) : '&screen_name=' + encodeURIComponent( screen_name ) ) )
+                .replace( /#COUNT#/g, count ) + ( /^\d+$/.test( max_id || '' ) ? '&max_id=' + max_id : '' );
             
             return await self.fetch_timeline_common( timeline_type, api_url );
         } // end of fetch_likes_legacy_timeline()
+        
+        async fetch_likes_timeline( user_id, cursor, count ) {
+            const
+                self = this,
+                timeline_type = TIMELINE_TYPE.likes,
+                api_def = self.API_DEFINITIONS[ timeline_type ];
+            
+            if ( isNaN( count ) || ( count < 0 ) || ( api_def.tweet_number.limit < count ) ) {
+                count = api_def.tweet_number.default;
+            }
+            
+            let api_url = api_def.url_template.replace( /#USER_ID#/g, user_id ).replace( /#COUNT#/g, count ) + ( cursor  ? '&cursor=' + encodeURIComponent( cursor ) : '' );
+            
+            return await self.fetch_timeline_common( timeline_type, api_url );
+        } // end of fetch_likes_timeline()
         
         async fetch_timeline_common( timeline_type, url, options ) {
             const
@@ -443,13 +484,6 @@ const
             
             log_debug( 'fetch_timeline_common(): ', timeline_type, url, options );
             log_debug( 'wait_msec:', wait_msec, '(before) api_def:', api_def, 'api_called_info:', api_called_info );
-            
-            options = Object.assign( {
-                method : 'GET',
-                headers : self.create_api_header(),
-                mode: 'cors',
-                credentials: 'include',
-            }, options || {} );
             
             do {
                 await wait( ( retry_number <= 0 ) ? wait_msec : ( self.TWITTER_API_DELAY_VERY_LONG * retry_number ) );
@@ -477,9 +511,46 @@ const
             return result.json;
         } // end of fetch_timeline_common()
         
+        async get_user_info( parameters ) {
+            const
+                self = this;
+            
+            log_debug( 'get_user_info() called:', parameters );
+            
+            parameters = parameters || {};
+            
+            let user_id = parameters.user_id,
+                screen_name = parameters.screen_name;
+            
+            if ( ( ! user_id ) && ( ! screen_name ) ) {
+                return { error : 'Illegal parameters' };
+            }
+            
+            let api_url = 'https://api.twitter.com/1.1/users/show.json?' + ( user_id ? 'user_id=' + encodeURIComponent( user_id ) : 'screen_name=' + encodeURIComponent( screen_name ) ),
+                result = await self.fetch_json( api_url ).catch( ( error ) => {
+                    return { error : error };
+                } );
+             
+            log_debug( 'get_user_info() result:', result );
+            
+            if ( result.error || ( ! result.json ) ) {
+                log_error( 'get_user_info() error:', result );
+                return null;
+            }
+            
+             return result.json;
+        } // end of get_user_info()
+        
         async fetch_json( url, options ) {
             const
                 self = this;
+            
+            options = Object.assign( {
+                method : 'GET',
+                headers : self.create_api_header(),
+                mode: 'cors',
+                credentials: 'include',
+            }, options || {} );
             
             let result;
             
@@ -760,9 +831,11 @@ const
                 options = {};
             }
             
-            let max_id = options.max_id,
+            let user_id = options.user_id,
+                screen_name = options.screen_name,
+                max_id = options.max_id,
                 count = options.count,
-                json = await TWITTER_API.fetch_likes_legacy_timeline( max_id, count ).catch( ( error ) => {
+                json = await TWITTER_API.fetch_likes_legacy_timeline( user_id, screen_name, max_id, count ).catch( ( error ) => {
                     log_error( 'TWITTER_API.fetch_likes_legacy_timeline() error:', error );
                     return null;
                 } );
@@ -796,6 +869,101 @@ const
                 }
             };
         } // end of get_likes_legacy_timeline_info()
+        
+        async get_likes_timeline_info( options ) {
+            const
+                self = this;
+            
+            log_debug( 'get_likes_timeline_info() called', options );
+            
+            if ( ! options ) {
+                options = {};
+            }
+            
+            let user_id = options.user_id,
+                screen_name = options.screen_name,
+                user_name = options.user_name,
+                user_icon = options.user_icon,
+                cursor = options.cursor,
+                count = options.count,
+                json = await TWITTER_API.fetch_likes_timeline( user_id, cursor, count ).catch( ( error ) => {
+                    log_error( 'TWITTER_API.fetch_likes_timeline() error:', error );
+                    return null;
+                } );
+            
+            if ( ! json ) {
+                return {
+                    json : null,
+                    error : 'fetch error',
+                };
+            }
+            
+            log_debug( 'get_likes_timeline_info(): json=', json );
+            
+            if ( ( ! json.globalObjects ) || ( ! json.timeline ) ) {
+                return {
+                    json : json,
+                    error : json.errors,
+                };
+            }
+            
+            let tweet_status_map = json.globalObjects.tweets,
+                user_map = json.globalObjects.users,
+                entries = json.timeline.instructions[0].addEntries.entries,
+                cursor_info = {},
+                tweet_info_list = [];
+            
+            entries.map( ( entry ) => {
+                let id = entry.sortIndex,
+                    date = convert_like_id_to_date( id ),
+                    datetime = format_date( date, 'YYYY/MM/DD hh:mm:ss' ),
+                    timestamp_ms = date.getTime();
+                
+                if ( entry.entryId.match( /^cursor-(top|bottom)-(\d+)$/ ) ) {
+                    cursor_info[ RegExp.$1 ] = {
+                        id,
+                        timestamp_ms,
+                        date,
+                        datetime,
+                        cursor : entry.content.operation.cursor,
+                    };
+                    return;
+                }
+                
+                if ( ! entry.entryId.match( /^tweet-(\d+)$/ ) ) {
+                    return;
+                }
+                
+                let tweet_id = entry.content.item.content.tweet.id,
+                    tweet_status = tweet_status_map[ tweet_id ],
+                    user = tweet_status.user = user_map[ tweet_status.user_id_str ],
+                    reacted_info = self.get_tweet_info_from_tweet_status( tweet_status );
+                
+                reacted_info.type = REACTION_TYPE.like;
+                
+                let tweet_info = {
+                        id,
+                        user_id,
+                        timestamp_ms,
+                        date,
+                        datetime,
+                        entry,
+                        reacted_info,
+                    };
+                
+                tweet_info_list.push( tweet_info );
+            } );
+            
+            log_debug( 'get_likes_timeline_info(): tweet_info_list:', tweet_info_list, 'cursor_info:', cursor_info );
+            
+            return {
+                json : json,
+                timeline_info : {
+                    cursor_info : cursor_info,
+                    tweet_info_list : tweet_info_list,
+                }
+            };
+        } // end of get_likes_timeline_info()
         
         get_tweet_info_from_tweet_status( tweet_status ) {
             const
@@ -987,7 +1155,7 @@ const
                 max_timestamp_ms = self.requested_max_timestamp_ms = self.max_timestamp_ms = parameters.max_timestamp_ms;
             
             if ( ! max_tweet_id ) {
-                self.max_tweet_id = get_tweet_id_from_utc_msec( max_timestamp_ms );
+                self.max_tweet_id = convert_utc_msec_to_tweet_id( max_timestamp_ms );
             }
             
             let filter_info = self.filter_info = parameters.filter_info || {},
@@ -1154,6 +1322,7 @@ const
                 } );
             
             if ( ( ! result ) || ( ! result.timeline_info ) ) {
+                log_error( 'unknown result:', result );
                 self.timeline_status = TIMELINE_STATUS.error;
                 return;
             }
@@ -1181,6 +1350,7 @@ const
             } );
             
             if ( ( ! result ) || ( ! result.timeline_info ) ) {
+                log_error( 'unknown result:', result );
                 self.timeline_status = TIMELINE_STATUS.error;
                 return;
             }
@@ -1247,6 +1417,7 @@ const
             } );
             
             if ( ( ! result ) || ( ! result.timeline_info ) ) {
+                log_error( 'unknown result:', result );
                 self.timeline_status = TIMELINE_STATUS.error;
                 return;
             }
@@ -1283,7 +1454,7 @@ const
                 screen_name = self.screen_name = parameters.screen_name;
             
             if ( ! max_timestamp_ms ) {
-                max_timestamp_ms = self.max_timestamp_ms = get_utc_msec_from_tweet_id( max_tweet_id );
+                max_timestamp_ms = self.max_timestamp_ms = convert_tweet_id_to_utc_msec( max_tweet_id );
             }
             
             self.query_base = 'to:' + self.screen_name + ' -from:' + self.screen_name + ' exclude:retweets';
@@ -1291,7 +1462,7 @@ const
             self.timeline_status = TIMELINE_STATUS.search;
             
             return self;
-        }
+        } // end of constructor()
         
         async fetch_tweets_from_notifications_timeline() {
             const
@@ -1306,6 +1477,7 @@ const
             } );
             
             if ( ( ! result ) || ( ! result.timeline_info ) ) {
+                log_error( 'unknown result:', result );
                 self.timeline_status = TIMELINE_STATUS.error;
                 return;
             }
@@ -1334,6 +1506,7 @@ const
             } );
             
             if ( ( ! result ) || ( ! result.timeline_info ) ) {
+                log_error( 'unknown result:', result );
                 self.timeline_status = TIMELINE_STATUS.error;
                 return;
             }
@@ -1363,16 +1536,19 @@ const
             
             parameters = self.parameters;
             
+            self.screen_name = parameters.screen_name;
+            
             self.timeline_status = TIMELINE_STATUS.search;
             
             return self;
-        }
+        } // end of constructor()
         
         async fetch_tweets_from_likes_legacy_timeline() {
             const
                 self = this;
             
             let result = await TIMELINE_TOOLBOX.get_likes_legacy_timeline_info( {
+                    screen_name : self.screen_name,
                     max_id : self.max_tweet_id,
                     count : TWITTER_API.definition( TIMELINE_TYPE.likes_legacy ).tweet_number.limit,
                 } ).catch( ( error ) => {
@@ -1381,6 +1557,7 @@ const
             } );
             
             if ( ( ! result ) || ( ! result.timeline_info ) ) {
+                log_error( 'unknown result:', result );
                 self.timeline_status = TIMELINE_STATUS.error;
                 return;
             }
@@ -1397,13 +1574,77 @@ const
         } // end of fetch_tweets_from_likes_legacy_timeline()
     }, // end of class ClassLikesLegacyTimeline
     
+    ClassLikesTimeline = class extends ClassTimelineTemplate {
+        constructor( parameters ) {
+            super( parameters );
+            
+            const
+                self = this;
+            
+            self.timeline_type = TIMELINE_TYPE.likes;
+            
+            self.set_fetch_tweets_function( TIMELINE_TYPE.likes, self.fetch_tweets_from_likes_timeline );
+            
+            parameters = self.parameters;
+            
+            self.user_id = parameters.user_id;
+            self.screen_name = parameters.screen_name;
+            self.user_info = null;
+            self.cursor = null; // TODO: cursor は 'HBbuwYDwsNyOvi4AAA==' のような値であり、開始時刻をどのように置き換えればよいかがわからない
+            
+            self.timeline_status = TIMELINE_STATUS.search;
+            
+            return self;
+        } // end of constructor()
+        
+        async fetch_tweets_from_likes_timeline() {
+            const
+                self = this;
+            
+            let user_info = self.user_info;
+            
+            if ( ! user_info ) {
+                user_info = self.user_info = await TWITTER_API.get_user_info( { user_id : self.user_id, screen_name : self.screen_name } );
+            }
+            
+            let result = await TIMELINE_TOOLBOX.get_likes_timeline_info( {
+                    user_id : user_info.id_str,
+                    screen_name : user_info.screen_name,
+                    user_name : user_info.name,
+                    user_icon : user_info.profile_image_url_https,
+                    cursor : self.cursor,
+                    count : TWITTER_API.definition( TIMELINE_TYPE.likes ).tweet_number.limit,
+                } ).catch( ( error ) => {
+                log_error( 'TIMELINE_TOOLBOX.get_likes_timeline_info():', error );
+                return null;
+            } );
+            
+            if ( ( ! result ) || ( ! result.timeline_info ) ) {
+                log_error( 'unknown result:', result );
+                self.timeline_status = TIMELINE_STATUS.error;
+                return;
+            }
+            
+            let cursor_info = result.timeline_info.cursor_info,
+                tweet_info_list = result.timeline_info.tweet_info_list;
+            
+            if ( ( tweet_info_list.length <= 0 ) || ( ! cursor_info.bottom ) ) {
+                self.timeline_status = TIMELINE_STATUS.end;
+                return;
+            }
+            
+            self.tweet_info_list = self.tweet_info_list.concat( tweet_info_list );
+            self.cursor = cursor_info.bottom.cursor.value;
+        } // end of fetch_tweets_from_likes_timeline()
+    }, // end of class ClassLikesTimeline
+    
     CLASS_TIMELINE_SET = {
         [ TIMELINE_TYPE.user ] : ClassUserTimeline,
         [ TIMELINE_TYPE.search ] : ClassSearchTimeline,
         [ TIMELINE_TYPE.notifications ] : ClassNotificationsTimeline,
-        [ TIMELINE_TYPE.likes ] : ClassLikesLegacyTimeline, // TODO: /1.1/favorites/list だと、いいねした時系列順ではなく、ツイートID順に並んでしまう
-        //[ TIMELINE_TYPE.likes ] : ClassLikesTimeline, // TODO: 未実装・/2/timeline/favorites/<user_id> を使うしかないが、頭出しする（ある時期より前を指定する）方法がわからない
         [ TIMELINE_TYPE.likes_legacy ] : ClassLikesLegacyTimeline,
+        //[ TIMELINE_TYPE.likes ] : ClassLikesLegacyTimeline, // TODO: /1.1/favorites/list だと、いいねした時系列順ではなく、ツイートID順に並んでしまう
+        [ TIMELINE_TYPE.likes ] : ClassLikesTimeline, // TODO: /2/timeline/favorites/<user_id> において、頭出しする（ある時期より前をcursor指定する）方法がわからない
     };
 
 

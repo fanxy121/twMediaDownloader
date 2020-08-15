@@ -2468,9 +2468,8 @@ var download_media_timeline = ( function () {
                     
                     case TIMELINE_TYPE.likes : {
                             TimelineObject = new ClassTimeline( {
-                                user_id : get_logined_user_id(),
-                                screen_name : logined_screen_name,
-                                max_timestamp_ms : until_timestamp_ms ? until_timestamp_ms - 1 : null,
+                                screen_name : screen_name,
+                                max_timestamp_ms : until_timestamp_ms ? until_timestamp_ms - 1 : null, // TODO: 実質意味がない（/2/timeline/favorites/<user_id> において、頭出しする方法が不明）
                                 filter_info : specified_filter_info,
                             } );
                         }
@@ -2908,11 +2907,20 @@ var download_media_timeline = ( function () {
                     
                     total_tweet_counter ++;
                     
-                    if ( reacted_info.type == REACTION_TYPE.retweet ) {
-                        self.log( total_tweet_counter + '.', reaction_info.datetime + '(R) <-', target_tweet_info.datetime, target_tweet_info.tweet_url );
-                    }
-                    else {
-                        self.log( total_tweet_counter + '.', target_tweet_info.datetime, target_tweet_info.tweet_url );
+                    switch ( reacted_info.type ) {
+                        case REACTION_TYPE.retweet : {
+                                self.log( total_tweet_counter + '.', reaction_info.datetime + '(R) <-', target_tweet_info.datetime, target_tweet_info.tweet_url );
+                            }
+                            break;
+                        
+                        case REACTION_TYPE.like : {
+                                self.log( total_tweet_counter + '.', reaction_info.datetime + '(L) <-', target_tweet_info.datetime, target_tweet_info.tweet_url );
+                            }
+                            break;
+                        
+                        default :
+                            self.log( total_tweet_counter + '.', target_tweet_info.datetime, target_tweet_info.tweet_url );
+                            break;
                     }
                     
                     if ( ( ! max_id ) || ( bignum_cmp( max_id, comparison_id ) < 0 ) ) {
