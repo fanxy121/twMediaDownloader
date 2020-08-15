@@ -299,10 +299,11 @@ switch ( LANGUAGE ) {
         
         OPTIONS.LIKES_DOWNLOAD_BUTTON_TEXT_LONG = 'いいね ⇩';
         OPTIONS.LIKES_DOWNLOAD_BUTTON_HELP_TEXT = '『いいね』をしたツイートの画像/動画を保存';
-        OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_HEADER = '対象『いいね』日時範囲 (空欄時は制限なし)';
-        OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_MARK = '＜ 日時 ＜';
-        OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_LEFT = '下限日時';
-        OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_RIGHT = '上限日時';
+        OPTIONS.DIALOG_DATE_RANGE_HEADER_LIKES = '対象『いいね』日時範囲 (空欄時は制限なし)';
+        OPTIONS.DIALOG_DATE_RANGE_HEADER_NOTIFICATIONS = '対象『通知』日時範囲 (空欄時は制限なし)';
+        OPTIONS.DIALOG_DATE_RANGE_MARK = '＜ 日時 ＜';
+        OPTIONS.DIALOG_DATE_PLACEHOLDER_LEFT = '下限日時';
+        OPTIONS.DIALOG_DATE_PLACEHOLDER_RIGHT = '上限日時';
         
         OPTIONS.MENTIONS_DOWNLOAD_BUTTON_TEXT_LONG = '@ツイート ⇩';
         OPTIONS.MENTIONS_DOWNLOAD_BUTTON_HELP_LONG = '通知(@ツイート)の画像/動画を保存';
@@ -333,10 +334,11 @@ switch ( LANGUAGE ) {
         
         OPTIONS.LIKES_DOWNLOAD_BUTTON_TEXT_LONG = 'Likes ⇩';
         OPTIONS.LIKES_DOWNLOAD_BUTTON_HELP_TEXT = 'Download images/videos from Likes-timeline';
-        OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_HEADER = 'Download "Likes" date-time range (There is no limit when left blank)';
-        OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_MARK = '< DATETIME <';
-        OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_LEFT = 'Since datetime';
-        OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_RIGHT = 'Until datetime';
+        OPTIONS.DIALOG_DATE_RANGE_HEADER_LIKES = 'Download "Likes" date-time range (There is no limit when left blank)';
+        OPTIONS.DIALOG_DATE_RANGE_HEADER_NOTIFICATIONS = 'Download "Notifications" date-time range (There is no limit when left blank)';
+        OPTIONS.DIALOG_DATE_RANGE_MARK = '< DATETIME <';
+        OPTIONS.DIALOG_DATE_PLACEHOLDER_LEFT = 'Since datetime';
+        OPTIONS.DIALOG_DATE_PLACEHOLDER_RIGHT = 'Until datetime';
         
         OPTIONS.MENTIONS_DOWNLOAD_BUTTON_TEXT_LONG = 'Mentions ⇩';
         OPTIONS.MENTIONS_DOWNLOAD_BUTTON_HELP_LONG = 'Download images/videos of mentions from Notifications-timeline';
@@ -671,10 +673,11 @@ var get_logined_screen_name = ( () => {
         var screen_name,
             $user_link;
         
-        //$user_link = $( 'nav[role="navigation"] > a[role="link"]:has(img[src*="profile_images/"])' ); // 遅い→ :has() を未使用にすることで効果大
-        $user_link = $( 'nav[role="navigation"] > a[role="link"]' ).filter( function () {return ( 0 < $( this ).find( 'img[src*="profile_images/"]' ).length );} );
-        
-        screen_name = ( $user_link.attr( 'href' ) || '' ).replace( /^.*\//g, '' );
+        ////$user_link = $( 'nav[role="navigation"] > a[role="link"]:has(img[src*="profile_images/"])' ); // 遅い→ :has() を未使用にすることで効果大
+        //$user_link = $( 'nav[role="navigation"] > a[role="link"]' ).filter( function () {return ( 0 < $( this ).find( 'img[src*="profile_images/"]' ).length );} );
+        //
+        //screen_name = ( $user_link.attr( 'href' ) || '' ).replace( /^.*\//g, '' );
+        screen_name = $('header[role="banner"] div[role="button"][data-testid="SideNav_AccountSwitcher_Button"] div[dir="ltr"]>span').text().trim().replace( /^@/, '' );
         
         if ( screen_name ) {
             logined_screen_name = screen_name;
@@ -1503,6 +1506,7 @@ var download_media_timeline = ( function () {
                     $button_stop,
                     $button_close,
                     $status_container,
+                    $status_bar,
                     $checkbox_container,
                     $checkbox_image,
                     $checkbox_gif,
@@ -1855,7 +1859,7 @@ var download_media_timeline = ( function () {
                             date = null,
                             date_string = '';
                         
-                        if ( self.is_for_likes_timeline ) {
+                        if ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) {
                             val = get_reg_time_string( val );
                             
                             date = new Date( val );
@@ -1942,8 +1946,19 @@ var download_media_timeline = ( function () {
                     .css( {
                         'position' : 'relative'
                     ,   'width' : '100%'
-                    ,   'height' : '70%'
+                    //,   'height' : '70%'
+                    ,   'height' : '65%'
                     //,   'background' : 'ghostwhite'
+                    } );
+                
+                self.$status_bar = $status_bar = $( '<div />' )
+                    .addClass( SCRIPT_NAME + '_status_bar' )
+                    .attr( {
+                    } )
+                    .css( {
+                        'position' : 'relative'
+                    ,   'width' : '100%'
+                    ,   'height' : '5%'
                     } );
                 
                 self.$log = $log = $( '<div />' )
@@ -2032,7 +2047,7 @@ var download_media_timeline = ( function () {
                     .append( $log )
                     .append( $log_mask );
                 
-                $dialog.append( $toolbox ).append( $status_container );
+                $dialog.append( $toolbox ).append( $status_container ).append( $status_bar );
                 
                 $container.append( $dialog );
                 
@@ -2040,6 +2055,11 @@ var download_media_timeline = ( function () {
                 
                 return self;
             } // end of init_container()
+        
+        ,   update_status_bar : function ( status_string ) {
+                this.$status_bar.text( status_string );
+                log_debug( 'update_status_bar():', status_string );
+            } // end of update_status_bar()
         
         ,   clear_log : function ( log_string ) {
                 var self = this,
@@ -2208,11 +2228,11 @@ var download_media_timeline = ( function () {
                 
                 $range_container = self.$range_container;
                 
-                if ( is_for_likes_timeline ) {
-                    $range_container.find( 'input[name="since_id"]' ).attr( 'placeholder', OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_LEFT );
-                    $range_container.find( 'input[name="until_id"]' ).attr( 'placeholder', OPTIONS.LIKES_DIALOG_TWEET_ID_PLACEHOLDER_RIGHT );
-                    $range_container.find( 'h3 > span.range_header_text' ).text( OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_HEADER );
-                    $range_container.find( 'span.range_text' ).text( OPTIONS.LIKES_DIALOG_TWEET_ID_RANGE_MARK );
+                if ( is_for_likes_timeline || is_for_notifications_timeline ) {
+                    $range_container.find( 'input[name="since_id"]' ).attr( 'placeholder', OPTIONS.DIALOG_DATE_PLACEHOLDER_LEFT );
+                    $range_container.find( 'input[name="until_id"]' ).attr( 'placeholder', OPTIONS.DIALOG_DATE_PLACEHOLDER_RIGHT );
+                    $range_container.find( 'h3 > span.range_header_text' ).text( is_for_likes_timeline ? OPTIONS.DIALOG_DATE_RANGE_HEADER_LIKES : OPTIONS.DIALOG_DATE_RANGE_HEADER_NOTIFICATIONS );
+                    $range_container.find( 'span.range_text' ).text( OPTIONS.DIALOG_DATE_RANGE_MARK );
                 }
                 else {
                     $range_container.find( 'input[name="since_id"]' ).attr( 'placeholder', OPTIONS.DIALOG_TWEET_ID_PLACEHOLDER_LEFT );
@@ -2236,6 +2256,7 @@ var download_media_timeline = ( function () {
                 self.$since_date.text( '' );
                 self.$until_date.text( '' );
                 self.clear_log();
+                self.update_status_bar( '' );
                 
                 self.saved_body_overflow = $( d.body ).get( 0 ).style.overflow;
                 self.saved_body_overflow_x = $( d.body ).get( 0 ).style.overflowX;
@@ -2321,6 +2342,23 @@ var download_media_timeline = ( function () {
                 self.$until_id.trigger( 'change', [ true ] );
                 self.$limit_tweet_number.trigger( 'change', [ true ] );
                 
+                const
+                    get_timestamp_ms = ( date_string ) => {
+                        let timestamp_ms;
+                        
+                        try {
+                            timestamp_ms = new Date( date_string ).getTime();
+                            if ( isNaN( timestamp_ms ) ) {
+                                timestamp_ms = null;
+                            }
+                        }
+                        catch ( error ) {
+                            timestamp_ms = null;
+                        }
+                        
+                        return timestamp_ms;
+                    };
+                
                 var is_search_timeline = self.is_search_timeline = judge_search_timeline(),
                     screen_name = self.screen_name = get_screen_name(),
                     logined_screen_name = self.logined_screen_name = get_logined_screen_name(),
@@ -2329,6 +2367,10 @@ var download_media_timeline = ( function () {
                     until_id = self.$until_id.val().trim(),
                     since_date = self.$since_date.text().trim(),
                     until_date = self.$until_date.text().trim(),
+                    since_date_raw = since_date,
+                    until_date_raw = until_date,
+                    since_timestamp_ms = get_timestamp_ms( since_date_raw ),
+                    until_timestamp_ms = get_timestamp_ms( until_date_raw ),
                     max_id = '',
                     min_id = '',
                     max_datetime = '',
@@ -2350,10 +2392,19 @@ var download_media_timeline = ( function () {
                     timeline_type = self.timeline_type,
                     ClassTimeline = CLASS_TIMELINE_SET[ timeline_type ],
                     TimelineObject = self.TimelineObject = null,
+                    specified_filter_info = {
+                        use_media_filter : OPTIONS.ENABLE_FILTER,
+                        image : filter_info.image,
+                        gif : filter_info.gif,
+                        video : filter_info.video,
+                        nomedia : filter_info.nomedia,
+                    },
                     
                     zip = null,
                     csv = self.csv = object_extender( Csv ).init(),
-                    date_ms;
+                    date_ms,
+                    
+                    fetch_counter = 0;
                 
                 if ( self.is_for_likes_timeline ) {
                     if ( since_id ) {
@@ -2384,26 +2435,28 @@ var download_media_timeline = ( function () {
                             TimelineObject = new ClassTimeline( {
                                 screen_name : screen_name,
                                 max_tweet_id : until_id ? Decimal.sub( until_id, 1 ) : null,
+                                filter_info : specified_filter_info,
                             } );
                         }
                         break;
                     
                     case TIMELINE_TYPE.search : {
-                            let specified_query = $( 'div[data-testid="primaryColumn"] form[role="search"] input[data-testid="SearchBox_Search_Input"]' ).val(),
-                                specified_filter_info = {
-                                    use_media_filter : OPTIONS.ENABLE_FILTER,
-                                    image : filter_info.image,
-                                    gif : filter_info.gif,
-                                    video : filter_info.video,
-                                    nomedia : filter_info.nomedia,
-                                };
+                            let specified_query = 
+                                    $( 'div[data-testid="primaryColumn"] form[role="search"] input[data-testid="SearchBox_Search_Input"]' ).val() ||
+                                    decodeURIComponent( get_url_info( w.location.href ).query_map[ 'q' ] || '' );
                             
-                            if ( ! specified_query ) {
-                                specified_query = decodeURIComponent( get_url_info( w.location.href ).query_map[ 'q' ] || '' );
-                            }
                             TimelineObject = new ClassTimeline( {
                                 specified_query :  specified_query,
                                 max_tweet_id : until_id ? Decimal.sub( until_id, 1 ) : null,
+                                filter_info : specified_filter_info,
+                            } );
+                        }
+                        break;
+                    
+                    case TIMELINE_TYPE.notifications : {
+                            TimelineObject = new ClassTimeline( {
+                                screen_name : logined_screen_name,
+                                max_timestamp_ms : until_timestamp_ms ? until_timestamp_ms - 1 : null,
                                 filter_info : specified_filter_info,
                             } );
                         }
@@ -2442,10 +2495,12 @@ var download_media_timeline = ( function () {
                     } );
                 }
                 
-                if ( self.is_for_likes_timeline ) {
-                    self.log( line_prefix + '"Likes" date-time range :', since_date, '-', until_date );
+                if ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) {
+                    let timeline_kind_string = self.is_for_likes_timeline ? 'Likes' : 'Notifications';
+                    
+                    self.log( line_prefix + '"' + timeline_kind_string + '" date-time range :', since_date, '-', until_date );
                     self.csv_push_row( {
-                        tweet_date : '"Likes" range:'
+                        tweet_date : '"' + timeline_kind_string + '" range:'
                     ,   action_date : since_date + ' ~ ' + until_date
                     } );
                 }
@@ -2521,6 +2576,8 @@ var download_media_timeline = ( function () {
                 
                 function request_save( callback ) {
                     function _callback() {
+                        self.update_status_bar( 'Done.' );
+                        
                         if ( typeof callback == 'function' ) {
                             callback();
                         }
@@ -2537,30 +2594,39 @@ var download_media_timeline = ( function () {
                         filename_prefix;
                     
                     if ( self.is_for_likes_timeline ) {
-                         filename_prefix = [
-                                filename_head
-                            ,   'likes'
-                            ,   datetime_to_timestamp( min_datetime )
-                            ,   datetime_to_timestamp( max_datetime )
-                            ,   ( ( dry_run ) ? 'dryrun' : 'media' )
-                            ].join( '-' );
+                        filename_prefix = [
+                            filename_head,
+                            'likes',
+                            datetime_to_timestamp( min_datetime ),
+                            datetime_to_timestamp( max_datetime ),
+                            ( ( dry_run ) ? 'dryrun' : 'media' ),
+                        ].join( '-' );
                     }
                     else if ( self.is_for_notifications_timeline ) {
-                         filename_prefix = [
-                                'mentions-to'
-                            ,   filename_head
-                            ,   ( min_id + '(' + datetime_to_timestamp( min_datetime ) + ')' )
-                            ,   ( max_id + '(' + datetime_to_timestamp( max_datetime ) + ')' )
-                            ,   ( ( ( ! self.is_search_timeline ) && filter_info.include_retweets ) ? 'include_rts-' : '' ) + ( ( dry_run ) ? 'dryrun' : 'media' )
-                            ].join( '-' );
+                        /*
+                        //filename_prefix = [
+                        //    'mentions-to'
+                        //,   filename_head
+                        //,   ( min_id + '(' + datetime_to_timestamp( min_datetime ) + ')' )
+                        //,   ( max_id + '(' + datetime_to_timestamp( max_datetime ) + ')' )
+                        //,   ( ( ( ! self.is_search_timeline ) && filter_info.include_retweets ) ? 'include_rts-' : '' ) + ( ( dry_run ) ? 'dryrun' : 'media' )
+                        //].join( '-' );
+                        */
+                        filename_prefix = [
+                            'mentions-to',
+                            filename_head,
+                            datetime_to_timestamp( min_datetime ),
+                            datetime_to_timestamp( max_datetime ),
+                            ( ( dry_run ) ? 'dryrun' : 'media' ),
+                        ].join( '-' );
                     }
                     else {
-                         filename_prefix = [
-                                filename_head
-                            ,   ( min_id + '(' + datetime_to_timestamp( min_datetime ) + ')' )
-                            ,   ( max_id + '(' + datetime_to_timestamp( max_datetime ) + ')' )
-                            ,   ( ( ( ! self.is_search_timeline ) && filter_info.include_retweets ) ? 'include_rts-' : '' ) + ( ( dry_run ) ? 'dryrun' : 'media' )
-                            ].join( '-' );
+                        filename_prefix = [
+                            filename_head,
+                            ( min_id + '(' + datetime_to_timestamp( min_datetime ) + ')' ),
+                            ( max_id + '(' + datetime_to_timestamp( max_datetime ) + ')' ),
+                            ( ( ( ! self.is_search_timeline ) && filter_info.include_retweets ) ? 'include_rts-' : '' ) + ( ( dry_run ) ? 'dryrun' : 'media' ),
+                        ].join( '-' );
                     }
                     
                     var log_text = self.$log.text(),
@@ -2589,6 +2655,8 @@ var download_media_timeline = ( function () {
                             date : adjust_date_for_zip( new Date() )
                         } );
                         
+                        self.update_status_bar( 'Zipping ...' );
+                        
                         zip.generateAsync( { type : zip_content_type } )
                         .then( function ( zip_content ) {
                             // TODO: ZIP を保存しようとすると、Firefox でセキュリティ警告が出る場合がある（「このファイルを開くのは危険です」(This file is not commonly downloaded.)）
@@ -2607,6 +2675,7 @@ var download_media_timeline = ( function () {
                             log_error( 'Error in zip.generateAsync()', error );
                             
                             alert( 'Sorry, ZIP download failed !' );
+                            
                             _callback();
                         } );
                     }
@@ -2622,7 +2691,7 @@ var download_media_timeline = ( function () {
                     
                     self.set_to_hide_added_logline();
                     
-                    if ( self.is_for_likes_timeline ) {
+                    if ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) {
                         self.log( '[Stop]', min_datetime, '-', max_datetime, ' ( Tweet:', total_tweet_counter, '/ Media:', total_media_counter, ')' );
                     }
                     else {
@@ -2633,7 +2702,7 @@ var download_media_timeline = ( function () {
                         self.set_to_show_added_logline();
                         
                         if ( ( ! dry_run ) && min_id ) {
-                            self.$until_id.val( ( self.is_for_likes_timeline ) ? min_datetime : min_id ).trigger( 'change', [ true ] );
+                            self.$until_id.val( ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) ? min_datetime : min_id ).trigger( 'change', [ true ] );
                         }
                         
                         if ( typeof callback == 'function' ) {
@@ -2651,7 +2720,7 @@ var download_media_timeline = ( function () {
                     
                     var is_limited = !! ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) );
                     
-                    if ( self.is_for_likes_timeline ) {
+                    if ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) {
                         self.log( '[Complete' + ( is_limited  ? '(limited)' : '' ) + ']', min_datetime, '-', max_datetime, ' ( Tweet:', total_tweet_counter, '/ Media:', total_media_counter, ')' );
                     }
                     else {
@@ -2662,7 +2731,7 @@ var download_media_timeline = ( function () {
                         self.set_to_show_added_logline();
                         
                         if ( ( ! dry_run ) && is_limited && min_id ) {
-                            self.$until_id.val( ( self.is_for_likes_timeline ) ? min_datetime : min_id ).trigger( 'change', [ true ] );
+                            self.$until_id.val( ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) ? min_datetime : min_id ).trigger( 'change', [ true ] );
                         }
                         
                         if ( typeof callback == 'function' ) {
@@ -2709,20 +2778,49 @@ var download_media_timeline = ( function () {
                         return;
                     }
                     
+                    fetch_counter ++;
+                    self.update_status_bar( 'Searching ... ' + fetch_counter );
+                    
                     let reacted_info = tweet_info.reacted_info,
-                        target_tweet_info = ( reacted_info.id ) ? reacted_info : tweet_info,
-                        reaction_info = ( reacted_info.id ) ? tweet_info : null,
-                        comparison_id = ( reaction_info ) ? reaction_info.id : target_tweet_info.id,
-                        comparison_datetime = ( reaction_info ) ? reaction_info.datetime : target_tweet_info.datetime,
+                        target_tweet_info,
+                        reaction_info,
+                        comparison_id,
+                        comparison_datetime,
                         is_matched_tweet = true;
                     
-                    if ( until_id && ( bignum_cmp( until_id, comparison_id ) <= 0 ) ) {
-                        return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
+                    if ( self.is_for_notifications_timeline ) {
+                        target_tweet_info = tweet_info;
+                        reaction_info = target_tweet_info;
+                        comparison_id = target_tweet_info.id;
+                        comparison_datetime = target_tweet_info.datetime;
+                        
+                        if ( until_timestamp_ms && ( until_timestamp_ms <= target_tweet_info.timestamp_ms ) ) {
+                            return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
+                        }
+                        
+                        if ( since_timestamp_ms && ( target_tweet_info.timestamp_ms <= since_timestamp_ms )  ) {
+                            download_completed( () => clean_up() );
+                            return;
+                        }
+                        
+                        if ( target_tweet_info.screen_name == logined_screen_name ) {
+                            return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
+                        }
                     }
-                    
-                    if ( since_id && ( bignum_cmp( comparison_id, since_id ) <= 0 ) ) {
-                        download_completed( () => clean_up() );
-                        return;
+                    else {
+                        target_tweet_info = ( reacted_info.id ) ? reacted_info : tweet_info;
+                        reaction_info = ( reacted_info.id ) ? tweet_info : null;
+                        comparison_id = ( reaction_info ) ? reaction_info.id : target_tweet_info.id;
+                        comparison_datetime = ( reaction_info ) ? reaction_info.datetime : target_tweet_info.datetime;
+                        
+                        if ( until_id && ( bignum_cmp( until_id, comparison_id ) <= 0 ) ) {
+                            return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
+                        }
+                        
+                        if ( since_id && ( bignum_cmp( comparison_id, since_id ) <= 0 ) ) {
+                            download_completed( () => clean_up() );
+                            return;
+                        }
                     }
                     
                     switch ( target_tweet_info.media_type ) {
@@ -2919,18 +3017,25 @@ var download_media_timeline = ( function () {
                     return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
                 } // end of check_fetched_tweet_info()
                 
-                
-                if ( since_id && until_id && ( bignum_cmp( until_id, since_id ) <= 0 ) ) {
-                    self.log( '[Error]', 'Wrong range' );
-                    
-                    clean_up();
-                    
-                    return self;
+                if ( self.is_for_notifications_timeline ) {
+                    if ( since_timestamp_ms && until_timestamp_ms && ( until_timestamp_ms <= since_timestamp_ms ) ) {
+                        self.log( '[Error]', 'Wrong range' );
+                        clean_up();
+                        return self;
+                    }
                 }
-                
+                else {
+                    if ( since_id && until_id && ( bignum_cmp( until_id, since_id ) <= 0 ) ) {
+                        self.log( '[Error]', 'Wrong range' );
+                        clean_up();
+                        return self;
+                    }
+                }
                 self.downloading = true;
                 self.stopping = false;
                 self.closing = false;
+                
+                fetch_counter = 0;
                 
                 TimelineObject.fetch_tweet_info()
                 .then( ( tweet_info ) => {
@@ -2948,6 +3053,7 @@ var download_media_timeline = ( function () {
                 var self = this;
                 
                 self.clear_log();
+                self.update_status_bar( '' );
                 
                 self.$button_start.prop( 'disabled', true );
                 self.$button_stop.prop( 'disabled', false );
@@ -2966,6 +3072,10 @@ var download_media_timeline = ( function () {
                 self.$button_container.find( 'input[type=checkbox]' ).prop( 'disabled', false );
                 self.$checkbox_container.find( 'input[type=checkbox]' ).prop( 'disabled', false );
                 
+                if ( self.TimelineObject ) {
+                    self.TimelineObject.stop();
+                }
+                
                 self.stopping = true;
                 
                 return self;
@@ -2980,6 +3090,9 @@ var download_media_timeline = ( function () {
                 self.$checkbox_container.find( 'input[type=checkbox]' ).prop( 'disabled', true );
                 
                 if ( self.downloading ) {
+                    if ( self.TimelineObject ) {
+                        self.TimelineObject.stop();
+                    }
                     self.closing = true;
                     
                     return self;
@@ -3002,6 +3115,7 @@ var download_media_timeline = ( function () {
         }
         
         /*
+        // 2020.08.13: ユーザー認証が必要となる（twitter-oauth/twitter-api.js による）Twitter API 呼出は使用しないように変更
         //initialize_twitter_api()
         //.then( function () {
         //    MediaDownload.show_container( options );
@@ -4147,6 +4261,8 @@ function initialize( user_options ) {
             log_selector = status_container_selector + ' .' + SCRIPT_NAME + '_log',
             log_mask_selector = status_container_selector + ' .' + SCRIPT_NAME + '_log_mask',
             
+            status_bar_selector = dialog_selector + ' .' + SCRIPT_NAME + '_status_bar',
+            
             night_mode_selector = 'body[data-nightmode="true"]',
             media_button_selector = '.' + SCRIPT_NAME + '_media_button button.btn',
             night_mode_media_button_selector = night_mode_selector + ' ' + media_button_selector,
@@ -4177,6 +4293,8 @@ function initialize( user_options ) {
             ,   dialog_container_selector + ' ' + log_selector + ' .log-item a.tweet-link {color: brown;}'
             ,   dialog_container_selector + ' ' + log_selector + ' .log-item a.media-link {color: navy;}'
             
+            ,   dialog_container_selector + ' ' + status_bar_selector + ' {padding: 0 0 0 16px; color: #66757f; font-size: 12px;}'
+            
             ,   night_mode_dialog_container_selector + ' {background: rgba( 0, 0, 0, 0.8 );}'
             ,   night_mode_dialog_container_selector + ' ' + dialog_selector + ' {background: #141d26;}'
             
@@ -4195,6 +4313,8 @@ function initialize( user_options ) {
             ,   night_mode_dialog_container_selector + ' ' + log_selector + ' .log-item a {text-shadow: none;}'
             ,   night_mode_dialog_container_selector + ' ' + log_selector + ' .log-item a.tweet-link {color: #bc8f8f;}'
             ,   night_mode_dialog_container_selector + ' ' + log_selector + ' .log-item a.media-link {color: #add8e6;}'
+            
+            ,   night_mode_dialog_container_selector + ' ' + status_bar_selector + ' {color: #8899a6;}'
             
             ,   media_button_selector + ' {font-size: 12px; font-weight: normal; padding: 2px 3px; text-decoration: none; cursor: pointer; display: inline-block;}'
             ,   header_button_selector + ' {font-size: 16px; vertical-align: middle; text-decoration: underline}'
