@@ -688,6 +688,11 @@ var get_logined_screen_name = ( () => {
 } )(); // end of get_logined_screen_name()
 
 
+var get_logined_user_id = () => {
+    return ( $( 'aside[role="complementary"] > a[role="link"][href*="?user_id="]' ).attr( 'href' ) || '' ).replace( /^.*?\?user_id=(\d+)$/, '$1' );
+};
+
+
 function get_screen_name( url ) {
     if ( ! url ) {
         url = w.location.href;
@@ -2405,10 +2410,10 @@ var download_media_timeline = ( function () {
                     
                     fetched_tweet_counter = 0;
                 
-                if ( self.is_for_likes_timeline ) {
+                if ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) {
                     if ( since_id ) {
                         since_date = since_id;
-                        since_id = datetime_to_like_id( since_id );
+                        //since_id = datetime_to_like_id( since_id );
                     }
                     if ( ! since_id ) {
                         since_id = '';
@@ -2417,7 +2422,7 @@ var download_media_timeline = ( function () {
                     
                     if ( until_id ) {
                         until_date = until_id;
-                        until_id = datetime_to_like_id( until_id );
+                        //until_id = datetime_to_like_id( until_id );
                     }
                     if ( ! until_id ) {
                         until_id = '';
@@ -2454,6 +2459,16 @@ var download_media_timeline = ( function () {
                     
                     case TIMELINE_TYPE.notifications : {
                             TimelineObject = new ClassTimeline( {
+                                screen_name : logined_screen_name,
+                                max_timestamp_ms : until_timestamp_ms ? until_timestamp_ms - 1 : null,
+                                filter_info : specified_filter_info,
+                            } );
+                        }
+                        break;
+                    
+                    case TIMELINE_TYPE.likes : {
+                            TimelineObject = new ClassTimeline( {
+                                user_id : get_logined_user_id(),
                                 screen_name : logined_screen_name,
                                 max_timestamp_ms : until_timestamp_ms ? until_timestamp_ms - 1 : null,
                                 filter_info : specified_filter_info,
@@ -2785,6 +2800,7 @@ var download_media_timeline = ( function () {
                         reaction_info,
                         comparison_id,
                         comparison_datetime,
+                        comparison_timestamp_ms,
                         is_matched_tweet = true;
                     
                     if ( self.is_for_notifications_timeline ) {
@@ -2792,12 +2808,13 @@ var download_media_timeline = ( function () {
                         reaction_info = target_tweet_info;
                         comparison_id = target_tweet_info.id;
                         comparison_datetime = target_tweet_info.datetime;
+                        comparison_timestamp_ms = target_tweet_info.timestamp_ms;
                         
-                        if ( until_timestamp_ms && ( until_timestamp_ms <= target_tweet_info.timestamp_ms ) ) {
+                        if ( until_timestamp_ms && ( until_timestamp_ms <= comparison_timestamp_ms ) ) {
                             return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
                         }
                         
-                        if ( since_timestamp_ms && ( target_tweet_info.timestamp_ms <= since_timestamp_ms )  ) {
+                        if ( since_timestamp_ms && ( comparison_timestamp_ms <= since_timestamp_ms )  ) {
                             download_completed( () => clean_up() );
                             return;
                         }
@@ -2806,11 +2823,38 @@ var download_media_timeline = ( function () {
                             return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
                         }
                     }
+                    else if ( self.is_for_likes_timeline ) {
+                        if ( TimelineObject.timeline_type == TIMELINE_TYPE.likes_legacy ) {
+                            // TODO: /1.1/favorites/list だと、いいねした時刻情報は取得できず、元ツイートのID/時刻しか利用できない
+                            target_tweet_info =tweet_info;
+                            reaction_info = null;
+                            comparison_id = target_tweet_info.id;
+                            comparison_datetime = target_tweet_info.datetime;
+                            comparison_timestamp_ms = target_tweet_info.timestamp_ms;
+                        }
+                        else {
+                            target_tweet_info = reacted_info;
+                            reaction_info = tweet_info;
+                            comparison_id = reaction_info.id;
+                            comparison_datetime = reaction_info.datetime;
+                            comparison_timestamp_ms = reaction_info.timestamp_ms;
+                        }
+                        
+                        if ( until_timestamp_ms && ( until_timestamp_ms <= comparison_timestamp_ms ) ) {
+                            return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
+                        }
+                        
+                        if ( since_timestamp_ms && ( comparison_timestamp_ms <= since_timestamp_ms )  ) {
+                            download_completed( () => clean_up() );
+                            return;
+                        }
+                    }
                     else {
                         target_tweet_info = ( reacted_info.id ) ? reacted_info : tweet_info;
                         reaction_info = ( reacted_info.id ) ? tweet_info : null;
                         comparison_id = ( reaction_info ) ? reaction_info.id : target_tweet_info.id;
                         comparison_datetime = ( reaction_info ) ? reaction_info.datetime : target_tweet_info.datetime;
+                        comparison_timestamp_ms = ( reaction_info ) ? reaction_info.timestamp_ms : target_tweet_info.timestamp_ms;
                         
                         if ( until_id && ( bignum_cmp( until_id, comparison_id ) <= 0 ) ) {
                             return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
@@ -3035,6 +3079,7 @@ var download_media_timeline = ( function () {
                 self.closing = false;
                 
                 fetched_tweet_counter = 0;
+                self.update_status_bar( 'Searching ... ' );
                 
                 TimelineObject.fetch_tweet_info()
                 .then( ( tweet_info ) => {

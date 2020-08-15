@@ -265,8 +265,9 @@ const
         unknown : null,
         user : 'user',
         search : 'search',
-        likes : 'likes',
         notifications : 'notifications',
+        likes : 'likes',
+        likes_legacy : 'likes_legacy',
         bookmarks : 'bookmarks',
     },
     
@@ -322,8 +323,10 @@ const
                 // Twitter API には Rate Limit があるため、続けてコールする際に待ち時間を挟む必要あり（15分毎にリセットされる）
                 // - statuses/user_timeline 等の場合、15分で900回
                 // - activity/about_me 等の場合、15分で180回
+                // - favorites/list 等の場合、15分で75回
                 TWITTER_API_DELAY_SHORT : ( ( 15 * 60 ) / 900 + 1 ) * 1000,
                 TWITTER_API_DELAY_LONG : ( ( 15 * 60 ) / 180 + 1 ) * 1000,
+                TWITTER_API_DELAY_VERY_LONG : ( ( 15 * 60 ) / 75 + 1 ) * 1000,
                 // TODO: 別のタブで並列して実行されている場合や、別ブラウザでの実行は考慮していない
             } );
             
@@ -349,166 +352,23 @@ const
                         min_delay_ms : self.TWITTER_API_DELAY_LONG,
                         max_retry : 3,
                     },
+                    
+                    [ TIMELINE_TYPE.likes_legacy ] : {
+                        url_template : 'https://api.twitter.com/1.1/favorites/list.json?count=#COUNT#&include_my_retweet=1&cards_platform=Web-13&include_entities=1&include_user_entities=1&include_cards=1&send_error_codes=1&tweet_mode=extended&include_ext_alt_text=true&include_reply_count=true',
+                        tweet_number : { default : 20, limit : 40 },
+                        min_delay_ms : self.TWITTER_API_DELAY_VERY_LONG,
+                        max_retry : 3,
+                    },
                 }
             } );
             
             Object.assign( self, {
                 language : '',
-                api_called_infos : {
-                    [ TIMELINE_TYPE.user ] : { count : 0, last_time_msec : current_time_msec, last_error : null },
-                    [ TIMELINE_TYPE.search ] : { count : 0, last_time_msec : current_time_msec, last_error : null },
-                    [ TIMELINE_TYPE.notifications ] : { count : 0, last_time_msec : current_time_msec, last_error : null },
-                },
+                api_called_infos : Object.keys( TIMELINE_TYPE ).reduce( ( api_called_infos, type ) => ( api_called_infos[ TIMELINE_TYPE[ type ] ] = { count : 0, last_time_msec : current_time_msec, last_error : null } ) &&  api_called_infos, {} ),
             } );
             
             return self;
         } // end of constructor()
-        
-        definition( timeline_type ) {
-            return this.API_DEFINITIONS[ timeline_type ] || {};
-        } // end of definition()
-        
-        called_info( timeline_type ) {
-            return this.api_called_infos[ timeline_type ] || {};
-        } // end of called_info()
-        
-        get client_language() {
-            const
-                self = this;
-            
-            if ( ! self.language ) {
-                if ( new URL( location.href ).hostname == 'tweetdeck.twitter.com' ) {
-                    self.language = ( navigator.browserLanguage || navigator.language || navigator.userLanguage ).substr( 0, 2 );
-                }
-                else {
-                    try {
-                        self.language = document.querySelector( 'html' ).getAttribute( 'lang' );
-                    }
-                    catch ( error ) {
-                    }
-                }
-            }
-            
-            return self.language;
-        } // end of get client_language()
-        
-        get csrf_token() {
-            let csrf_token;
-            
-            try {
-                csrf_token = document.cookie.match( /ct0=(.*?)(?:;|$)/ )[ 1 ];
-            }
-            catch ( error ) {
-                csrf_token = null;
-            }
-            
-            return csrf_token;
-        } // end of get csrf_token()
-        
-        create_api_header() {
-            const
-                self = this;
-            
-            return {
-                'authorization' : 'Bearer ' + self.API_AUTHORIZATION_BEARER,
-                'x-csrf-token' : self.csrf_token,
-                'x-twitter-active-user' : 'yes',
-                'x-twitter-auth-type' : 'OAuth2Session',
-                'x-twitter-client-language' : self.client_language,
-            };
-        } // end of create_api_header()
-        
-        async fetch_json( url, options ) {
-            const
-                self = this;
-            
-            let result;
-
-            if ( IS_WEB_EXTENSION && browser ) {
-                /*
-                // fetch() を使用した場合、Chrome において戻り値が null になる→レスポンスボディが空のため、response.json() でエラーが発生
-                // > Cross-Origin Read Blocking (CORB) blocked cross-origin response <url> with MIME type application/json. See https://www.chromestatus.com/feature/5629709824032768 for more details.
-                //
-                // 参考：
-                //   [Changes to Cross-Origin Requests in Chrome Extension Content Scripts - The Chromium Projects](https://www.chromium.org/Home/chromium-security/extension-content-script-fetches)
-                //   [Cross-Origin Read Blocking (CORB) とは - ASnoKaze blog](https://asnokaze.hatenablog.com/entry/2018/04/10/205717)
-                */
-                result = await new Promise( ( resolve, reject ) => {
-                    browser.runtime.sendMessage( {
-                        type : 'FETCH_JSON',
-                        url : url,
-                        options : options,
-                    }, ( response ) => {
-                        log_debug( 'FETCH_JSON => response', response );
-                        resolve( response );
-                        // TODO: シークレット(incognito)モードだと、{"errors":[{"code":353,"message":"This request requires a matching csrf cookie and header."}]} のように返されてしまう
-                        // → manifest.json に『"incognito" : "split"』が必要
-                    } );
-                } );
-            }
-            else {
-                result = await fetch( url, options )
-                    .then( response => response.json() )
-                    .then( ( json ) => {
-                        return { json : json };
-                    } )
-                    .catch( ( error ) => {
-                        return { error : error };
-                    } );
-            }
-            
-            if ( result.error ) {
-                log_error( 'Error in fetch_json()', url, options, result.error );
-            }
-            
-            return result;
-        } // end of fetch_json()
-        
-        async fetch_timeline_common( timeline_type, url, options ) {
-            const
-                self = this,
-                api_def = self.API_DEFINITIONS[ timeline_type ],
-                api_called_info = self.api_called_infos[ timeline_type ];
-            
-            let wait_msec = self.get_remain_time_msec_until_next_call( timeline_type ),
-                retry_number = 0,
-                result;
-            
-            log_debug( 'fetch_timeline_common(): ', timeline_type, url, options );
-            log_debug( 'wait_msec:', wait_msec, '(before) api_def:', api_def, 'api_called_info:', api_called_info );
-            
-            options = Object.assign( {
-                method : 'GET',
-                headers : self.create_api_header(),
-                mode: 'cors',
-                credentials: 'include',
-            }, options || {} );
-            
-            do {
-                await wait( ( retry_number <= 0 ) ? wait_msec : ( self.TWITTER_API_DELAY_LONG * retry_number ) );
-                
-                api_called_info.count ++;
-                api_called_info.last_time_msec = Date.now();
-                
-                log_debug( 'retry_number:', retry_number, 'api_def:', api_def, 'api_called_info:', api_called_info );
-                
-                api_called_info.last_error = null;
-                
-                result = await self.fetch_json( url, options );
-                
-                api_called_info.last_error = result.error;
-                
-                if ( ( ! result.error ) && result.json ) {
-                    break;
-                }
-                
-                retry_number ++;
-            } while ( api_def.max_retry && ( retry_number <= api_def.max_retry ) );
-            
-            log_debug( 'fetched result:', result );
-            
-            return result.json;
-        } // end of fetch_timeline_common()
         
         async fetch_user_timeline( user_id, screen_name, max_id, count ) {
             const
@@ -556,11 +416,172 @@ const
             return await self.fetch_timeline_common( timeline_type, api_url );
         } // end of fetch_notifications_timeline()
         
+        async fetch_likes_legacy_timeline( max_id, count ) {
+            const
+                self = this,
+                timeline_type = TIMELINE_TYPE.likes_legacy,
+                api_def = self.API_DEFINITIONS[ timeline_type ];
+            
+            if ( isNaN( count ) || ( count < 0 ) || ( api_def.tweet_number.limit < count ) ) {
+                count = api_def.tweet_number.default;
+            }
+            
+            let api_url = api_def.url_template.replace( /#COUNT#/g, count ) + ( /^\d+$/.test( max_id || '' ) ? '&max_id=' + max_id : '' );
+            
+            return await self.fetch_timeline_common( timeline_type, api_url );
+        } // end of fetch_likes_legacy_timeline()
+        
+        async fetch_timeline_common( timeline_type, url, options ) {
+            const
+                self = this,
+                api_def = self.API_DEFINITIONS[ timeline_type ],
+                api_called_info = self.api_called_infos[ timeline_type ];
+            
+            let wait_msec = self.get_remain_time_msec_until_next_call( timeline_type ),
+                retry_number = 0,
+                result;
+            
+            log_debug( 'fetch_timeline_common(): ', timeline_type, url, options );
+            log_debug( 'wait_msec:', wait_msec, '(before) api_def:', api_def, 'api_called_info:', api_called_info );
+            
+            options = Object.assign( {
+                method : 'GET',
+                headers : self.create_api_header(),
+                mode: 'cors',
+                credentials: 'include',
+            }, options || {} );
+            
+            do {
+                await wait( ( retry_number <= 0 ) ? wait_msec : ( self.TWITTER_API_DELAY_VERY_LONG * retry_number ) );
+                
+                api_called_info.count ++;
+                api_called_info.last_time_msec = Date.now();
+                
+                log_debug( 'retry_number:', retry_number, 'api_def:', api_def, 'api_called_info:', api_called_info );
+                
+                api_called_info.last_error = null;
+                
+                result = await self.fetch_json( url, options );
+                
+                api_called_info.last_error = result.error;
+                
+                if ( ( ! result.error ) && result.json ) {
+                    break;
+                }
+                
+                retry_number ++;
+            } while ( api_def.max_retry && ( retry_number <= api_def.max_retry ) );
+            
+            log_debug( 'fetched result:', result );
+            
+            return result.json;
+        } // end of fetch_timeline_common()
+        
+        async fetch_json( url, options ) {
+            const
+                self = this;
+            
+            let result;
+            
+            if ( IS_WEB_EXTENSION && browser ) {
+                /*
+                // fetch() を使用した場合、Chrome において戻り値が null になる→レスポンスボディが空のため、response.json() でエラーが発生
+                // > Cross-Origin Read Blocking (CORB) blocked cross-origin response <url> with MIME type application/json. See https://www.chromestatus.com/feature/5629709824032768 for more details.
+                //
+                // 参考：
+                //   [Changes to Cross-Origin Requests in Chrome Extension Content Scripts - The Chromium Projects](https://www.chromium.org/Home/chromium-security/extension-content-script-fetches)
+                //   [Cross-Origin Read Blocking (CORB) とは - ASnoKaze blog](https://asnokaze.hatenablog.com/entry/2018/04/10/205717)
+                */
+                result = await new Promise( ( resolve, reject ) => {
+                    browser.runtime.sendMessage( {
+                        type : 'FETCH_JSON',
+                        url : url,
+                        options : options,
+                    }, ( response ) => {
+                        log_debug( 'FETCH_JSON => response', response );
+                        resolve( response );
+                        // TODO: シークレット(incognito)モードだと、{"errors":[{"code":353,"message":"This request requires a matching csrf cookie and header."}]} のように返されてしまう
+                        // → manifest.json に『"incognito" : "split"』が必要
+                    } );
+                } );
+            }
+            else {
+                result = await fetch( url, options )
+                    .then( response => response.json() )
+                    .then( ( json ) => {
+                        return { json : json };
+                    } )
+                    .catch( ( error ) => {
+                        return { error : error };
+                    } );
+            }
+            
+            if ( result.error ) {
+                log_error( 'Error in fetch_json()', url, options, result.error );
+            }
+            
+            return result;
+        } // end of fetch_json()
+        
+        create_api_header() {
+            const
+                self = this;
+            
+            return {
+                'authorization' : 'Bearer ' + self.API_AUTHORIZATION_BEARER,
+                'x-csrf-token' : self.csrf_token,
+                'x-twitter-active-user' : 'yes',
+                'x-twitter-auth-type' : 'OAuth2Session',
+                'x-twitter-client-language' : self.client_language,
+            };
+        } // end of create_api_header()
+        
+        get client_language() {
+            const
+                self = this;
+            
+            if ( ! self.language ) {
+                if ( new URL( location.href ).hostname == 'tweetdeck.twitter.com' ) {
+                    self.language = ( navigator.browserLanguage || navigator.language || navigator.userLanguage ).substr( 0, 2 );
+                }
+                else {
+                    try {
+                        self.language = document.querySelector( 'html' ).getAttribute( 'lang' );
+                    }
+                    catch ( error ) {
+                    }
+                }
+            }
+            
+            return self.language;
+        } // end of get client_language()
+        
+        get csrf_token() {
+            let csrf_token;
+            
+            try {
+                csrf_token = document.cookie.match( /ct0=(.*?)(?:;|$)/ )[ 1 ];
+            }
+            catch ( error ) {
+                csrf_token = null;
+            }
+            
+            return csrf_token;
+        } // end of get csrf_token()
+        
         get_remain_time_msec_until_next_call( timeline_type ) {
             let remain_time_msec = this.api_called_infos[ timeline_type ].last_time_msec + ( this.API_DEFINITIONS[ timeline_type ].min_delay_ms || this.TWITTER_API_DELAY_LONG ) - Date.now();
             
             return ( 0 < remain_time_msec )? remain_time_msec : 0;
         } // end of get_remain_time_msec_until_next_call()
+        
+        definition( timeline_type ) {
+            return this.API_DEFINITIONS[ timeline_type ] || {};
+        } // end of definition()
+        
+        called_info( timeline_type ) {
+            return this.api_called_infos[ timeline_type ] || {};
+        } // end of called_info()
     }, // end of TWITTER_API
     
     TIMELINE_TOOLBOX = new class {
@@ -728,6 +749,53 @@ const
                 }
             };
         } // end of get_notifications_timeline_info()
+        
+        async get_likes_legacy_timeline_info( options ) {
+            const
+                self = this;
+            
+            log_debug( 'get_likes_legacy_timeline_info() called', options );
+            
+            if ( ! options ) {
+                options = {};
+            }
+            
+            let max_id = options.max_id,
+                count = options.count,
+                json = await TWITTER_API.fetch_likes_legacy_timeline( max_id, count ).catch( ( error ) => {
+                    log_error( 'TWITTER_API.fetch_likes_legacy_timeline() error:', error );
+                    return null;
+                } );
+            
+            if ( ! json ) {
+                return {
+                    json : null,
+                    error : 'fetch error',
+                };
+            }
+            
+            log_debug( 'get_likes_legacy_timeline_info(): json=', json, Array.isArray( json ) );
+            
+            let tweets = json;
+            
+            if ( ! Array.isArray( tweets ) ) {
+                return {
+                    json : json,
+                    error : 'result JSON structure error',
+                };
+            }
+            
+            let tweet_info_list = tweets.map( tweet => self.get_tweet_info_from_tweet_status( tweet ) );
+            
+            log_debug( 'get_likes_legacy_timeline_info(): tweet_info_list:', tweet_info_list );
+            
+            return {
+                json : json,
+                timeline_info : {
+                    tweet_info_list : tweet_info_list,
+                }
+            };
+        } // end of get_likes_legacy_timeline_info()
         
         get_tweet_info_from_tweet_status( tweet_status ) {
             const
@@ -1282,10 +1350,60 @@ const
         } // end of fetch_tweets_from_search_timeline()
     }, // end of class ClassNotificationsTimeline
     
+    ClassLikesLegacyTimeline = class extends ClassTimelineTemplate {
+        constructor( parameters ) {
+            super( parameters );
+            
+            const
+                self = this;
+            
+            self.timeline_type = TIMELINE_TYPE.likes_legacy;
+            
+            self.set_fetch_tweets_function( TIMELINE_TYPE.likes_legacy, self.fetch_tweets_from_likes_legacy_timeline );
+            
+            parameters = self.parameters;
+            
+            self.timeline_status = TIMELINE_STATUS.search;
+            
+            return self;
+        }
+        
+        async fetch_tweets_from_likes_legacy_timeline() {
+            const
+                self = this;
+            
+            let result = await TIMELINE_TOOLBOX.get_likes_legacy_timeline_info( {
+                    max_id : self.max_tweet_id,
+                    count : TWITTER_API.definition( TIMELINE_TYPE.likes_legacy ).tweet_number.limit,
+                } ).catch( ( error ) => {
+                log_error( 'TIMELINE_TOOLBOX.get_likes_legacy_timeline_info():', error );
+                return null;
+            } );
+            
+            if ( ( ! result ) || ( ! result.timeline_info ) ) {
+                self.timeline_status = TIMELINE_STATUS.error;
+                return;
+            }
+            
+            let tweet_info_list = result.timeline_info.tweet_info_list;
+            
+            if ( tweet_info_list.length <= 0 ) {
+                self.timeline_status = TIMELINE_STATUS.end;
+                return;
+            }
+            
+            self.tweet_info_list = self.tweet_info_list.concat( tweet_info_list );
+            self.max_tweet_id = new Decimal( tweet_info_list[ tweet_info_list.length - 1 ].id ).sub( 1 ).toString();
+        } // end of fetch_tweets_from_likes_legacy_timeline()
+    }, // end of class ClassLikesLegacyTimeline
+    
     CLASS_TIMELINE_SET = {
         [ TIMELINE_TYPE.user ] : ClassUserTimeline,
         [ TIMELINE_TYPE.search ] : ClassSearchTimeline,
         [ TIMELINE_TYPE.notifications ] : ClassNotificationsTimeline,
+        [ TIMELINE_TYPE.likes ] : ClassLikesLegacyTimeline, // TODO: /1.1/favorites/list だと、いいねした時系列順ではなく、ツイートID順に並んでしまう
+        //[ TIMELINE_TYPE.likes ] : ClassLikesTimeline, // TODO: 未実装・/2/timeline/favorites/<user_id> を使うしかないが、頭出しする（ある時期より前を指定する）方法がわからない
+        [ TIMELINE_TYPE.likes_legacy ] : ClassLikesLegacyTimeline,
     };
 
 
