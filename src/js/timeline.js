@@ -219,7 +219,9 @@ const
     TWEPOCH_OFFSET_SEC = Math.ceil( TWEPOCH_OFFSET_MSEC / 1000 ), // 1288834974.657 sec (2011.11.04 01:42:54(UTC)) (via http://www.slideshare.net/pfi/id-15755280)
     ID_THRESHOLD = '300000000000000', // 2010.11.04 22時(UTC)頃に、IDが 30000000000以下から300000000000000以上に切り替え
     DEFAULT_UNTIL_ID = '9153891586667446272', // // datetime_to_tweet_id(Date.parse( '2080-01-01T00:00:00.000Z' )) => 9153891586667446272
-    LIKE_ID_INC_PER_MSEC = Decimal.pow( 2, 20 ), // Like ID（/2/timeline/favorites/<usr_id>のsortIndex）の、ミリ秒毎の増加分
+    
+    LIKE_ID_INC_PER_MSEC = Decimal.pow( 2, 20 ), // Like ID（/2/timeline/favorites/<usr_id>応答のsortIndex）の、ミリ秒毎の増加分
+    BOOKMARK_ID_INC_PER_MSEC = Decimal.pow( 2, 18 ), // Bookmark ID（/2/timeline/bookmark/応答のsortIndex）の、ミリ秒毎の増加分
     
     convert_utc_msec_to_tweet_id = ( utc_msec ) => {
         if ( ! utc_msec ) {
@@ -268,6 +270,24 @@ const
     convert_like_id_to_date = ( like_id ) => {
         return new Date( convert_like_id_to_utc_msec( like_id ) );
     }, // end of convert_like_id_to_date()
+    
+    convert_utc_msec_to_bookmark_id = ( utc_msec ) => {
+        if ( ! utc_msec ) {
+            utc_msec = Date.now();
+        }
+        return Decimal.mul( utc_msec, BOOKMARK_ID_INC_PER_MSEC ).toString();
+    }, // end of convert_utc_msec_to_bookmark_id()
+    
+    convert_bookmark_id_to_utc_msec = ( bookmark_id ) => {
+        if ( ! bookmark_id ) {
+            return Date.now();
+        }
+        return parseInt( Decimal.div( bookmark_id, BOOKMARK_ID_INC_PER_MSEC ).floor().toString(), 10 );
+    }, // end of convert_bookmark_id_to_utc_msec ()
+    
+    convert_bookmark_id_to_date = ( bookmark_id ) => {
+        return new Date( convert_bookmark_id_to_utc_msec( bookmark_id ) );
+    }, // end of convert_bookmark_id_to_date()
     
     wait = async ( wait_msec ) => {
         if ( wait_msec <= 0 ) {
@@ -339,9 +359,10 @@ const
                 // ※ これを使用しても、一定時間内のリクエスト回数に制限有り→参考: [TwitterのAPI制限 [2019/11/17現在] - Qiita](https://qiita.com/mpyw/items/32d44a063389236c0a65)
                 
                 // Twitter API には Rate Limit があるため、続けてコールする際に待ち時間を挟む必要あり（15分毎にリセットされる）
-                // - statuses/user_timeline 等の場合、15分で900回
-                // - activity/about_me 等の場合、15分で180回
-                // - favorites/list 等の場合、15分で75回
+                // - statuses/user_timeline 等の場合、900回/15分
+                // - activity/about_me、timeline/favorites等の場合、180回/15分
+                // - favorites/list 等の場合、75回/15分
+                // - timeline/bookmark 等の場合、1000回/15分
                 TWITTER_API_DELAY_SHORT : ( ( 15 * 60 ) / 900 + 1 ) * 1000,
                 TWITTER_API_DELAY_LONG : ( ( 15 * 60 ) / 180 + 1 ) * 1000,
                 TWITTER_API_DELAY_VERY_LONG : ( ( 15 * 60 ) / 75 + 1 ) * 1000,
@@ -382,6 +403,13 @@ const
                         url_template : 'https://api.twitter.com/2/timeline/favorites/#USER_ID#.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_quote_count=true&include_reply_count=1&tweet_mode=extended&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&send_error_codes=true&simple_quoted_tweet=true&sorted_by_time=true&count=#COUNT#&ext=mediaStats%2ChighlightedLabel',
                         tweet_number : { default : 20, limit : 40 },
                         min_delay_ms : self.TWITTER_API_DELAY_LONG,
+                        max_retry : 3,
+                    },
+                    
+                    [ TIMELINE_TYPE.bookmarks ] : {
+                        url_template : 'https://api.twitter.com/2/timeline/bookmark.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_quote_count=true&include_reply_count=1&tweet_mode=extended&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&send_error_codes=true&simple_quoted_tweet=true&count=#COUNT#&ext=mediaStats%2ChighlightedLabel',
+                        tweet_number : { default : 20, limit : 40 },
+                        min_delay_ms : self.TWITTER_API_DELAY_SHORT,
                         max_retry : 3,
                     },
                 }
@@ -471,6 +499,21 @@ const
             
             return await self.fetch_timeline_common( timeline_type, api_url );
         } // end of fetch_likes_timeline()
+        
+        async fetch_bookmarks_timeline( cursor, count ) {
+            const
+                self = this,
+                timeline_type = TIMELINE_TYPE.bookmarks,
+                api_def = self.API_DEFINITIONS[ timeline_type ];
+            
+            if ( isNaN( count ) || ( count < 0 ) || ( api_def.tweet_number.limit < count ) ) {
+                count = api_def.tweet_number.default;
+            }
+            
+            let api_url = api_def.url_template.replace( /#COUNT#/g, count ) + ( cursor  ? '&cursor=' + encodeURIComponent( cursor ) : '' );
+            
+            return await self.fetch_timeline_common( timeline_type, api_url );
+        } // end of fetch_bookmarks_timeline()
         
         async fetch_timeline_common( timeline_type, url, options ) {
             const
@@ -964,6 +1007,101 @@ const
                 }
             };
         } // end of get_likes_timeline_info()
+        
+        async get_bookmarks_timeline_info( options ) {
+            const
+                self = this;
+            
+            log_debug( 'get_bookmarks_timeline_info() called', options );
+            
+            if ( ! options ) {
+                options = {};
+            }
+            
+            let user_id = options.user_id,
+                screen_name = options.screen_name,
+                user_name = options.user_name,
+                user_icon = options.user_icon,
+                cursor = options.cursor,
+                count = options.count,
+                json = await TWITTER_API.fetch_bookmarks_timeline( cursor, count ).catch( ( error ) => {
+                    log_error( 'TWITTER_API.fetch_bookmarks_timeline() error:', error );
+                    return null;
+                } );
+            
+            if ( ! json ) {
+                return {
+                    json : null,
+                    error : 'fetch error',
+                };
+            }
+            
+            log_debug( 'get_bookmarks_timeline_info(): json=', json );
+            
+            if ( ( ! json.globalObjects ) || ( ! json.timeline ) ) {
+                return {
+                    json : json,
+                    error : json.errors,
+                };
+            }
+            
+            let tweet_status_map = json.globalObjects.tweets,
+                user_map = json.globalObjects.users,
+                entries = json.timeline.instructions[0].addEntries.entries,
+                cursor_info = {},
+                tweet_info_list = [];
+            
+            entries.map( ( entry ) => {
+                let id = entry.sortIndex,
+                    date = convert_bookmark_id_to_date( id ),
+                    datetime = format_date( date, 'YYYY/MM/DD hh:mm:ss' ),
+                    timestamp_ms = date.getTime();
+                
+                if ( entry.entryId.match( /^cursor-(top|bottom)-(\d+)$/ ) ) {
+                    cursor_info[ RegExp.$1 ] = {
+                        id,
+                        timestamp_ms,
+                        date,
+                        datetime,
+                        cursor : entry.content.operation.cursor,
+                    };
+                    return;
+                }
+                
+                if ( ! entry.entryId.match( /^tweet-(\d+)$/ ) ) {
+                    return;
+                }
+                
+                let tweet_id = entry.content.item.content.tweet.id,
+                    tweet_status = tweet_status_map[ tweet_id ],
+                    user = tweet_status.user = user_map[ tweet_status.user_id_str ],
+                    reacted_info = self.get_tweet_info_from_tweet_status( tweet_status );
+                
+                reacted_info.type = REACTION_TYPE.bookmark;
+                
+                let tweet_info = {
+                        id,
+                        user_id,
+                        timestamp_ms,
+                        date,
+                        datetime,
+                        entry,
+                        reacted_info,
+                    };
+                
+                tweet_info_list.push( tweet_info );
+            } );
+            
+            log_debug( 'get_bookmarks_timeline_info(): tweet_info_list:', tweet_info_list, 'cursor_info:', cursor_info );
+            
+            return {
+                json : json,
+                timeline_info : {
+                    cursor_info : cursor_info,
+                    tweet_info_list : tweet_info_list,
+                }
+            };
+        } // end of get_bookmarks_timeline_info()
         
         get_tweet_info_from_tweet_status( tweet_status ) {
             const
@@ -1638,6 +1776,70 @@ const
         } // end of fetch_tweets_from_likes_timeline()
     }, // end of class ClassLikesTimeline
     
+    ClassBookmarksTimeline = class extends ClassTimelineTemplate {
+        constructor( parameters ) {
+            super( parameters );
+            
+            const
+                self = this;
+            
+            self.timeline_type = TIMELINE_TYPE.bookmarks;
+            
+            self.set_fetch_tweets_function( TIMELINE_TYPE.bookmarks, self.fetch_tweets_from_bookmarks_timeline );
+            
+            parameters = self.parameters;
+            
+            self.user_id = parameters.user_id;
+            self.screen_name = parameters.screen_name;
+            self.user_info = null;
+            self.cursor = null; // TODO: cursor は 'HBaA9ISd7/33hwsAAA==' のような値であり、開始時刻をどのように置き換えればよいかがわからない
+            
+            self.timeline_status = TIMELINE_STATUS.search;
+            
+            return self;
+        } // end of constructor()
+        
+        async fetch_tweets_from_bookmarks_timeline() {
+            const
+                self = this;
+            
+            let user_info = self.user_info;
+            
+            if ( ! user_info ) {
+                user_info = self.user_info = await TWITTER_API.get_user_info( { user_id : self.user_id, screen_name : self.screen_name } );
+            }
+            
+            let result = await TIMELINE_TOOLBOX.get_bookmarks_timeline_info( {
+                    user_id : user_info.id_str,
+                    screen_name : user_info.screen_name,
+                    user_name : user_info.name,
+                    user_icon : user_info.profile_image_url_https,
+                    cursor : self.cursor,
+                    count : TWITTER_API.definition( TIMELINE_TYPE.bookmarks ).tweet_number.limit,
+                } ).catch( ( error ) => {
+                log_error( 'TIMELINE_TOOLBOX.get_bookmarks_timeline_info():', error );
+                return null;
+            } );
+            
+            if ( ( ! result ) || ( ! result.timeline_info ) ) {
+                log_error( 'unknown result:', result );
+                self.timeline_status = TIMELINE_STATUS.error;
+                return;
+            }
+            
+            let cursor_info = result.timeline_info.cursor_info,
+                tweet_info_list = result.timeline_info.tweet_info_list;
+            
+            if ( ( tweet_info_list.length <= 0 ) || ( ! cursor_info.bottom ) ) {
+                self.timeline_status = TIMELINE_STATUS.end;
+                return;
+            }
+            
+            self.tweet_info_list = self.tweet_info_list.concat( tweet_info_list );
+            self.cursor = cursor_info.bottom.cursor.value;
+        } // end of fetch_tweets_from_bookmarks_timeline()
+    }, // end of class ClassBookmarksTimeline
+    
     CLASS_TIMELINE_SET = {
         [ TIMELINE_TYPE.user ] : ClassUserTimeline,
         [ TIMELINE_TYPE.search ] : ClassSearchTimeline,
@@ -1645,6 +1847,7 @@ const
         [ TIMELINE_TYPE.likes_legacy ] : ClassLikesLegacyTimeline,
         //[ TIMELINE_TYPE.likes ] : ClassLikesLegacyTimeline, // TODO: /1.1/favorites/list だと、いいねした時系列順ではなく、ツイートID順に並んでしまう
         [ TIMELINE_TYPE.likes ] : ClassLikesTimeline, // TODO: /2/timeline/favorites/<user_id> において、頭出しする（ある時期より前をcursor指定する）方法がわからない
+        [ TIMELINE_TYPE.bookmarks ] : ClassBookmarksTimeline, // TODO: /2/timeline/bookmark において、頭出しする（ある時期より前をcursor指定する）方法がわからない
     };
 
 

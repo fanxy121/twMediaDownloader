@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Twitter Media Downloader for new Twitter.com 2019
 // @description     Download media files on new Twitter.com 2019.
-// @version         0.1.4.8
+// @version         0.1.4.9
 // @namespace       https://memo.furyutei.work/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -96,14 +96,14 @@ var OPTIONS = {
 ,   OPEN_MEDIA_LINK_BY_DEFAULT : false // true: デフォルトでメディアリンクを開く（[Alt]＋Click時にダウンロード）
 ,   ENABLE_FILTER : true // true: 検索タイムライン使用時に filter: をかける
     // ※検索タイムライン使用時、filter: をかけない場合にヒットする画像や動画が、filter: をかけるとヒットしないことがある
-,   DOWNLOAD_SIZE_LIMIT_MB : 500 // ダウンロード時のサイズ制限(MB)
+,   DOWNLOAD_SIZE_LIMIT_MB : 10000 // ダウンロード時のサイズ制限(MB)
 ,   ENABLE_VIDEO_DOWNLOAD : true // true: 動画ダウンロードを有効にする（ユーザー認証が必要）
     
 ,   OPERATION : true // true: 動作中、false: 停止中
 
 ,   QUICK_LOAD_GIF : true // true: アニメーションGIF（から変換された動画）の情報(URL)取得を簡略化
 
-,   DEFAULT_LIMIT_TWEET_NUMBER : 1000 // ダウンロードできる画像付きツイート数制限のデフォルト値
+,   DEFAULT_LIMIT_TWEET_NUMBER : 0 // ダウンロードできる画像付きツイート数制限のデフォルト値
 ,   DEFAULT_SUPPORT_IMAGE : true // true: 画像をダウンロード対象にする
 ,   DEFAULT_SUPPORT_GIF : true // true: アニメーションGIF（から変換された動画）をダウンロード対象にする
 ,   DEFAULT_SUPPORT_VIDEO : true // true: 動画をダウンロード対象にする
@@ -301,12 +301,15 @@ switch ( LANGUAGE ) {
         OPTIONS.LIKES_DOWNLOAD_BUTTON_HELP_TEXT = '『いいね』をしたツイートの画像/動画を保存';
         OPTIONS.DIALOG_DATE_RANGE_HEADER_LIKES = '対象『いいね』日時範囲 (空欄時は制限なし)';
         OPTIONS.DIALOG_DATE_RANGE_HEADER_NOTIFICATIONS = '対象『通知』日時範囲 (空欄時は制限なし)';
+        OPTIONS.DIALOG_DATE_RANGE_HEADER_BOOKMARKS = '対象『ブックマーク』日時範囲 (空欄時は制限なし)';
         OPTIONS.DIALOG_DATE_RANGE_MARK = '＜ 日時 ＜';
         OPTIONS.DIALOG_DATE_PLACEHOLDER_LEFT = '下限日時';
         OPTIONS.DIALOG_DATE_PLACEHOLDER_RIGHT = '上限日時';
         
         OPTIONS.MENTIONS_DOWNLOAD_BUTTON_TEXT_LONG = '@ツイート ⇩';
         OPTIONS.MENTIONS_DOWNLOAD_BUTTON_HELP_LONG = '通知(@ツイート)の画像/動画を保存';
+        
+        OPTIONS.BOOKMARKS_DOWNLOAD_BUTTON_HELP_LONG = 'ブックマークの画像/動画を保存';
         break;
     default:
         OPTIONS.DOWNLOAD_BUTTON_TEXT = '⇩';
@@ -336,12 +339,15 @@ switch ( LANGUAGE ) {
         OPTIONS.LIKES_DOWNLOAD_BUTTON_HELP_TEXT = 'Download images/videos from Likes-timeline';
         OPTIONS.DIALOG_DATE_RANGE_HEADER_LIKES = 'Download "Likes" date-time range (There is no limit when left blank)';
         OPTIONS.DIALOG_DATE_RANGE_HEADER_NOTIFICATIONS = 'Download "Notifications" date-time range (There is no limit when left blank)';
+        OPTIONS.DIALOG_DATE_RANGE_HEADER_BOOKMARKS = 'Download "Bookmarks" date-time range (There is no limit when left blank)';
         OPTIONS.DIALOG_DATE_RANGE_MARK = '< DATETIME <';
         OPTIONS.DIALOG_DATE_PLACEHOLDER_LEFT = 'Since datetime';
         OPTIONS.DIALOG_DATE_PLACEHOLDER_RIGHT = 'Until datetime';
         
         OPTIONS.MENTIONS_DOWNLOAD_BUTTON_TEXT_LONG = 'Mentions ⇩';
         OPTIONS.MENTIONS_DOWNLOAD_BUTTON_HELP_LONG = 'Download images/videos of mentions from Notifications-timeline';
+        
+        OPTIONS.BOOKMARKS_DOWNLOAD_BUTTON_HELP_LONG = 'Download images/videos of mentions from Bookmarks-timeline';
         break;
 }
 
@@ -793,6 +799,15 @@ function judge_notifications_timeline( url ) {
     
     return /^\/(?:notifications)(?:\/mentions|$)/.test( new URL( url ).pathname );
 } // end of judge_notifications_timeline()
+
+
+function judge_bookmarks_timeline( url ) {
+    if ( ! url ) {
+        url = w.location.href;
+    }
+    
+    return /^\/i\/bookmarks/.test( new URL( url ).pathname );
+} // end of judge_bookmarks_timeline()
 
 
 function datetime_to_timestamp( datetime ) {
@@ -1475,6 +1490,7 @@ var download_media_timeline = ( function () {
         
         ,   is_for_likes_timeline : false
         ,   is_for_notifications_timeline : false
+        ,   is_for_bookmarks_timeline : false
         
         ,   $container : null
         ,   $log : null
@@ -1484,6 +1500,86 @@ var download_media_timeline = ( function () {
         ,   $button_start : null
         ,   $button_stop : null
         ,   $button_close : null
+        
+        ,   save_value : async function ( storage_key, storage_value ) {
+                return await new Promise( ( resolve, reject ) => {
+                    set_values( { [ storage_key ] : storage_value }, () => resolve() );
+                } );
+            } // end of save_value()
+        
+        ,   load_value : async function ( storage_key ) {
+                return await new Promise( ( resolve, reject ) => {
+                    get_values( [ storage_key ], ( storage_key_value_map ) => resolve( storage_key_value_map[ storage_key ] ) );
+                } );
+            } // end of load_value()
+        
+        ,   date_range_infos_storage_key : SCRIPT_NAME + '-date-range-info'
+        
+        ,   reset_date_range_infos : async function () {
+                const
+                    self = this,
+                    storage_key = self.date_range_infos_storage_key;
+                
+                await self.save_value( storage_key, '{}' );
+            } // end of reset_date_range_infos()
+        
+        ,   save_date_range_info : async function( date_range_info ) {
+                const
+                    self = this,
+                    storage_key = self.date_range_infos_storage_key;
+                
+                let storage_value = await self.load_value( storage_key ),
+                    all_data = ( () => {
+                        try {
+                            return JSON.parse( storage_value || '{}' );
+                        }
+                        catch ( error ) {
+                            return {};
+                        }
+                    } )(),
+                    target_screen_name = ( () => {
+                        switch ( self.timeline_type ) {
+                            case TIMELINE_TYPE.notifications :
+                            case TIMELINE_TYPE.bookmarks :
+                                return self.logined_screen_name;
+                            default:
+                                return self.screen_name;
+                        }
+                    } )(),
+                    target_timeline_data = all_data[ self.timeline_type ] = all_data[ self.timeline_type ] || {};
+                
+                target_timeline_data[ target_screen_name ] = date_range_info;
+                
+                await self.save_value( storage_key, JSON.stringify( all_data ) );
+            } // end of save_date_range_info()
+        
+        ,   load_date_range_info : async function () {
+                const
+                    self = this,
+                    storage_key = self.date_range_infos_storage_key;
+                
+                let storage_value = await self.load_value( storage_key ),
+                    date_range_info_map = ( () => {
+                        try {
+                            return JSON.parse( storage_value || '{}' )[ self.timeline_type ] || {};
+                        }
+                        catch ( error ) {
+                            return {};
+                        }
+                    } )(),
+                    target_screen_name = ( () => {
+                        switch ( self.timeline_type ) {
+                            case TIMELINE_TYPE.notifications :
+                            case TIMELINE_TYPE.bookmarks :
+                                return self.logined_screen_name;
+                            default:
+                                return self.screen_name;
+                        }
+                    } )(),
+                    date_range_info = date_range_info_map[ target_screen_name ] || {};
+                
+                return date_range_info;
+            } // end of load_date_range_info()
         
         ,   init : function () {
                 var self = this;
@@ -1864,7 +1960,7 @@ var download_media_timeline = ( function () {
                             date = null,
                             date_string = '';
                         
-                        if ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) {
+                        if ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) {
                             val = get_reg_time_string( val );
                             
                             date = new Date( val );
@@ -2202,7 +2298,7 @@ var download_media_timeline = ( function () {
                     self.$checkbox_video.css( 'color', 'gray' ).find( 'input' ).prop( 'disabled', true );
                 }
                 
-                if ( self.is_for_likes_timeline || self.is_for_notifications_timeline || judge_search_timeline() ) {
+                if ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline || judge_search_timeline() ) {
                     self.$checkbox_include_retweets.hide();
                 }
                 else {
@@ -2212,7 +2308,7 @@ var download_media_timeline = ( function () {
                 return self;
             } // end of reset_buttons()
         
-        ,   show_container : function ( options ) {
+        ,   show_container : async function ( options ) {
                 if ( ! options ) {
                     options = {};
                 }
@@ -2223,7 +2319,14 @@ var download_media_timeline = ( function () {
                     $button_close,
                     is_for_likes_timeline = self.is_for_likes_timeline = !! options.is_for_likes_timeline,
                     is_for_notifications_timeline = self.is_for_notifications_timeline = !! options.is_for_notifications_timeline,
-                    timeline_type = self.timeline_type = options.timeline_type;
+                    is_for_bookmarks_timeline = self.is_for_bookmarks_timeline = !! options.is_for_bookmarks_timeline,
+                    timeline_type = self.timeline_type = options.timeline_type,
+                    screen_name = self.screen_name = get_screen_name(),
+                    logined_screen_name = self.logined_screen_name = get_logined_screen_name(),
+                    last_date_range_info = await self.load_date_range_info().catch( ( error ) => {
+                        log_error( 'load_date_range_info() error:', error );
+                        return {};
+                    } );
                 
                 if ( ! $container ) {
                     self.init_container();
@@ -2233,10 +2336,16 @@ var download_media_timeline = ( function () {
                 
                 $range_container = self.$range_container;
                 
-                if ( is_for_likes_timeline || is_for_notifications_timeline ) {
+                if ( is_for_likes_timeline || is_for_notifications_timeline || is_for_bookmarks_timeline ) {
+                    let header_text = ( () => {
+                            if ( is_for_likes_timeline ) return OPTIONS.DIALOG_DATE_RANGE_HEADER_LIKES;
+                            if ( is_for_notifications_timeline ) return OPTIONS.DIALOG_DATE_RANGE_HEADER_NOTIFICATIONS;
+                            if ( is_for_bookmarks_timeline ) return OPTIONS.DIALOG_DATE_RANGE_HEADER_BOOKMARKS;
+                        } )();
+                    
                     $range_container.find( 'input[name="since_id"]' ).attr( 'placeholder', OPTIONS.DIALOG_DATE_PLACEHOLDER_LEFT );
                     $range_container.find( 'input[name="until_id"]' ).attr( 'placeholder', OPTIONS.DIALOG_DATE_PLACEHOLDER_RIGHT );
-                    $range_container.find( 'h3 > span.range_header_text' ).text( is_for_likes_timeline ? OPTIONS.DIALOG_DATE_RANGE_HEADER_LIKES : OPTIONS.DIALOG_DATE_RANGE_HEADER_NOTIFICATIONS );
+                    $range_container.find( 'h3 > span.range_header_text' ).text( header_text );
                     $range_container.find( 'span.range_text' ).text( OPTIONS.DIALOG_DATE_RANGE_MARK );
                 }
                 else {
@@ -2262,6 +2371,15 @@ var download_media_timeline = ( function () {
                 self.$until_date.text( '' );
                 self.clear_log();
                 self.update_status_bar( '' );
+                
+                if ( last_date_range_info ) {
+                    //let since_id_value = ( is_for_likes_timeline || is_for_notifications_timeline || is_for_bookmarks_timeline ) ? last_date_range_info.max_datetime : last_date_range_info.max_id;
+                    let since_id_value = last_date_range_info.download_datetime;
+                    
+                    if ( since_id_value ) {
+                        self.$since_id.val( since_id_value ).trigger( 'change', [ true ] );
+                    }
+                }
                 
                 self.saved_body_overflow = $( d.body ).get( 0 ).style.overflow;
                 self.saved_body_overflow_x = $( d.body ).get( 0 ).style.overflowX;
@@ -2334,9 +2452,8 @@ var download_media_timeline = ( function () {
                 
                 return self;
             } // end of csv_push_row()
-        
-        
-        ,   start_download : function () {
+            
+        ,   start_download : async function () {
                 var self = this;
                 
                 if ( self.downloading ) {
@@ -2370,16 +2487,19 @@ var download_media_timeline = ( function () {
                     profile_name = get_profile_name(),
                     since_id = self.$since_id.val().trim(),
                     until_id = self.$until_id.val().trim(),
+                    max_tweet_id,
                     since_date = self.$since_date.text().trim(),
                     until_date = self.$until_date.text().trim(),
                     since_date_raw = since_date,
                     until_date_raw = until_date,
                     since_timestamp_ms = get_timestamp_ms( since_date_raw ),
                     until_timestamp_ms = get_timestamp_ms( until_date_raw ),
+                    max_timestamp_ms,
                     max_id = '',
                     min_id = '',
                     max_datetime = '',
                     min_datetime = '',
+                    download_datetime = self.download_datetime = format_date( new Date(), 'YYYY/MM/DD hh:mm:ss' ),
                     total_tweet_counter = 0,
                     total_media_counter = 0,
                     total_file_size = 0,
@@ -2388,10 +2508,11 @@ var download_media_timeline = ( function () {
                     ,   gif : support_gif
                     ,   video : support_video && OPTIONS.ENABLE_VIDEO_DOWNLOAD && twitter_api_is_enabled()
                     ,   nomedia : support_nomedia
-                    ,   include_retweets : ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) ? false : include_retweets
+                    ,   include_retweets : ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) ? false : include_retweets
                     ,   dry_run : dry_run
                     ,   is_for_likes_timeline : self.is_for_likes_timeline
                     ,   is_for_notifications_timeline : self.is_for_notifications_timeline
+                    ,   is_for_bookmarks_timeline : self.is_for_bookmarks_timeline
                     },
                     
                     timeline_type = self.timeline_type,
@@ -2410,7 +2531,7 @@ var download_media_timeline = ( function () {
                     
                     fetched_tweet_counter = 0;
                 
-                if ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) {
+                if ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) {
                     if ( since_id ) {
                         since_date = since_id;
                         //since_id = datetime_to_like_id( since_id );
@@ -2434,11 +2555,24 @@ var download_media_timeline = ( function () {
                     until_date = ( until_date ) ? '(' + until_date + ')' : '(unknown)';
                 }
                 
+                try {
+                    max_tweet_id = until_id ? Decimal.sub( until_id, 1 ) : null;
+                }
+                catch ( error ) {
+                    max_tweet_id = null;
+                }
+                try {
+                    max_timestamp_ms = until_timestamp_ms ? until_timestamp_ms - 1 : null;
+                }
+                catch ( error ) {
+                    max_timestamp_ms = null;
+                }
+                
                 switch ( timeline_type ) {
                     case TIMELINE_TYPE.user : {
                             TimelineObject = new ClassTimeline( {
                                 screen_name : screen_name,
-                                max_tweet_id : until_id ? Decimal.sub( until_id, 1 ) : null,
+                                max_tweet_id : max_tweet_id,
                                 filter_info : specified_filter_info,
                             } );
                         }
@@ -2451,7 +2585,7 @@ var download_media_timeline = ( function () {
                             
                             TimelineObject = new ClassTimeline( {
                                 specified_query :  specified_query,
-                                max_tweet_id : until_id ? Decimal.sub( until_id, 1 ) : null,
+                                max_tweet_id : max_tweet_id,
                                 filter_info : specified_filter_info,
                             } );
                         }
@@ -2460,7 +2594,7 @@ var download_media_timeline = ( function () {
                     case TIMELINE_TYPE.notifications : {
                             TimelineObject = new ClassTimeline( {
                                 screen_name : logined_screen_name,
-                                max_timestamp_ms : until_timestamp_ms ? until_timestamp_ms - 1 : null,
+                                max_timestamp_ms : max_timestamp_ms,
                                 filter_info : specified_filter_info,
                             } );
                         }
@@ -2469,8 +2603,15 @@ var download_media_timeline = ( function () {
                     case TIMELINE_TYPE.likes : {
                             TimelineObject = new ClassTimeline( {
                                 screen_name : screen_name,
-                                max_timestamp_ms : until_timestamp_ms ? until_timestamp_ms - 1 : null, // TODO: 実質意味がない（/2/timeline/favorites/<user_id> において、頭出しする方法が不明）
-                                filter_info : specified_filter_info,
+                                max_timestamp_ms : max_timestamp_ms, // TODO: 実質意味がない（/2/timeline/favorites/<user_id> において、頭出しする方法が不明）
+                            } );
+                        }
+                        break;
+                    
+                    case TIMELINE_TYPE.bookmarks : {
+                            TimelineObject = new ClassTimeline( {
+                                screen_name : logined_screen_name,
+                                max_timestamp_ms : max_timestamp_ms, // TODO: 実質意味がない（/2/timeline/bookmark/<user_id> において、頭出しする方法が不明）
                             } );
                         }
                         break;
@@ -2503,13 +2644,17 @@ var download_media_timeline = ( function () {
                 if ( ! is_search_timeline ) {
                     line_prefix = '[@' + ( screen_name ? screen_name : logined_screen_name ) + '] ';
                     self.csv_push_row( {
-                        tweet_date : ( self.is_for_notifications_timeline ) ? 'Mentions to' : profile_name
+                        tweet_date : ( () => {
+                            if ( self.is_for_notifications_timeline ) return 'Mentions to';
+                            if ( self.is_for_bookmarks_timeline ) return 'Bookmarked by';
+                            return profile_name;
+                        } )()
                     ,   action_date : '@' + ( screen_name ? screen_name : logined_screen_name )
                     } );
                 }
                 
-                if ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) {
-                    let timeline_kind_string = self.is_for_likes_timeline ? 'Likes' : 'Notifications';
+                if ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) {
+                    let timeline_kind_string = self.is_for_likes_timeline ? 'Likes' : ( self.is_for_bookmarks_timeline ? 'Bookmarks' : 'Notifications' );
                     
                     self.log( line_prefix + '"' + timeline_kind_string + '" date-time range :', since_date, '-', until_date );
                     self.csv_push_row( {
@@ -2533,7 +2678,7 @@ var download_media_timeline = ( function () {
                     ],
                     flag_text = '';
                 
-                if ( is_search_timeline || self.is_for_likes_timeline || self.is_for_notifications_timeline ) {
+                if ( is_search_timeline || self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) {
                 }
                 else {
                     flag_strings.push( 'include RTs : ' + ( filter_info.include_retweets ? 'on' : 'off' ) );
@@ -2588,7 +2733,20 @@ var download_media_timeline = ( function () {
                 
                 
                 function request_save( callback ) {
-                    function _callback() {
+                    async function _callback() {
+                        if ( ( ! dry_run ) && ( ! until_date_raw ) ) {
+                            await self.save_date_range_info( {
+                                min_id : min_id,
+                                max_id : max_id,
+                                min_datetime : min_datetime,
+                                max_datetime : max_datetime,
+                                download_datetime : download_datetime,
+                            } )
+                            .catch( ( error )=> {
+                                log_error( 'save_date_range_info() error:', error );
+                            } );
+                        }
+                        
                         self.update_status_bar( 'Done.' );
                         
                         if ( typeof callback == 'function' ) {
@@ -2603,7 +2761,7 @@ var download_media_timeline = ( function () {
                     
                     var filename_head = ( self.is_search_timeline ) ?
                             ( 'search(' + format_date( new Date(), 'YYYYMMDD_hhmmss' ) + ')' ) :
-                            ( ( self.is_for_notifications_timeline ) ? logined_screen_name : screen_name ),
+                            ( ( self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) ? logined_screen_name : screen_name ),
                         filename_prefix;
                     
                     if ( self.is_for_likes_timeline ) {
@@ -2615,7 +2773,7 @@ var download_media_timeline = ( function () {
                             ( ( dry_run ) ? 'dryrun' : 'media' ),
                         ].join( '-' );
                     }
-                    else if ( self.is_for_notifications_timeline ) {
+                    else if ( self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) {
                         /*
                         //filename_prefix = [
                         //    'mentions-to'
@@ -2626,7 +2784,7 @@ var download_media_timeline = ( function () {
                         //].join( '-' );
                         */
                         filename_prefix = [
-                            'mentions-to',
+                            ( self.is_for_notifications_timeline ) ? 'mentions-to' : 'bookmarked-by',
                             filename_head,
                             datetime_to_timestamp( min_datetime ),
                             datetime_to_timestamp( max_datetime ),
@@ -2704,7 +2862,7 @@ var download_media_timeline = ( function () {
                     
                     self.set_to_hide_added_logline();
                     
-                    if ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) {
+                    if ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) {
                         self.log( '[Stop]', min_datetime, '-', max_datetime, ' ( Tweet:', total_tweet_counter, '/ Media:', total_media_counter, ')' );
                     }
                     else {
@@ -2715,7 +2873,7 @@ var download_media_timeline = ( function () {
                         self.set_to_show_added_logline();
                         
                         if ( ( ! dry_run ) && min_id ) {
-                            self.$until_id.val( ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) ? min_datetime : min_id ).trigger( 'change', [ true ] );
+                            self.$until_id.val( ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) ? min_datetime : min_id ).trigger( 'change', [ true ] );
                         }
                         
                         if ( typeof callback == 'function' ) {
@@ -2733,7 +2891,7 @@ var download_media_timeline = ( function () {
                     
                     var is_limited = !! ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) );
                     
-                    if ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) {
+                    if ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) {
                         self.log( '[Complete' + ( is_limited  ? '(limited)' : '' ) + ']', min_datetime, '-', max_datetime, ' ( Tweet:', total_tweet_counter, '/ Media:', total_media_counter, ')' );
                     }
                     else {
@@ -2744,7 +2902,7 @@ var download_media_timeline = ( function () {
                         self.set_to_show_added_logline();
                         
                         if ( ( ! dry_run ) && is_limited && min_id ) {
-                            self.$until_id.val( ( self.is_for_likes_timeline || self.is_for_notifications_timeline ) ? min_datetime : min_id ).trigger( 'change', [ true ] );
+                            self.$until_id.val( ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) ? min_datetime : min_id ).trigger( 'change', [ true ] );
                         }
                         
                         if ( typeof callback == 'function' ) {
@@ -2822,7 +2980,7 @@ var download_media_timeline = ( function () {
                             return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
                         }
                     }
-                    else if ( self.is_for_likes_timeline ) {
+                    else if ( self.is_for_likes_timeline || self.is_for_bookmarks_timeline ) {
                         if ( TimelineObject.timeline_type == TIMELINE_TYPE.likes_legacy ) {
                             // TODO: /1.1/favorites/list だと、いいねした時刻情報は取得できず、元ツイートのID/時刻しか利用できない
                             target_tweet_info =tweet_info;
@@ -2915,6 +3073,11 @@ var download_media_timeline = ( function () {
                         
                         case REACTION_TYPE.like : {
                                 self.log( total_tweet_counter + '.', reaction_info.datetime + '(L) <-', target_tweet_info.datetime, target_tweet_info.tweet_url );
+                            }
+                            break;
+                        
+                        case REACTION_TYPE.bookmark : {
+                                self.log( total_tweet_counter + '.', reaction_info.datetime + '(B) <-', target_tweet_info.datetime, target_tweet_info.tweet_url );
                             }
                             break;
                         
@@ -3068,7 +3231,7 @@ var download_media_timeline = ( function () {
                     return await check_fetched_tweet_info( await TimelineObject.fetch_tweet_info() );
                 } // end of check_fetched_tweet_info()
                 
-                if ( self.is_for_notifications_timeline ) {
+                if ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) {
                     if ( since_timestamp_ms && until_timestamp_ms && ( until_timestamp_ms <= since_timestamp_ms ) ) {
                         self.log( '[Error]', 'Wrong range' );
                         clean_up();
@@ -3212,6 +3375,7 @@ var check_timeline_headers = ( function () {
                 download_media_timeline( {
                     is_for_likes_timeline : $button.hasClass( 'likes' )
                 ,   is_for_notifications_timeline : $button.hasClass( 'notifications' )
+                ,   is_for_bookmarks_timeline : $button.hasClass( 'bookmarks' )
                 ,   timeline_type : $button.attr( 'data-timeline-type' )
                 } );
                 
@@ -3381,6 +3545,53 @@ var check_timeline_headers = ( function () {
     } // end of check_notifications_timeline()
     
     
+    function check_bookmarks_timeline( $node ) {
+        if ( ! CLASS_TIMELINE_SET[ TIMELINE_TYPE.bookmarks ] ) {
+            return false;
+        }
+        
+        if ( ! judge_bookmarks_timeline() ) {
+            return false;
+        }
+        
+        var $target_container = $();
+        
+        $target_container = $( 'div[data-testid="primaryColumn"] > div > div > div:first' );
+        if ( 0 < $target_container.find( '.' + button_container_class_name ).length ) {
+            $target_container = $();
+        }
+        
+        if ( $target_container.length <= 0 ) {
+            return false;
+        }
+        
+        $target_container.find( '.' + button_container_class_name ).remove();
+        
+        var $button = $button_template.clone( true )
+                .addClass( 'bookmarks' )
+                .attr( 'title', OPTIONS.BOOKMARKS_DOWNLOAD_BUTTON_HELP_LONG )
+                .attr( 'data-timeline-type', TIMELINE_TYPE.bookmarks )
+                .css( {
+                } ),
+            
+            $button_container;
+        
+        $button.text( OPTIONS.DOWNLOAD_BUTTON_TEXT_LONG );
+        
+        $button_container = $( '<div />' )
+            .addClass( button_container_class_name )
+            .css( {
+                'right' : '130px'
+            ,   'bottom' : '2px'
+            } )
+            .append( $button );
+        
+        $target_container.append( $button_container );
+        
+        return true;
+    } // end of check_bookmarks_timeline()
+    
+    
     return function ( node ) {
         if ( ( ! node ) || ( node.nodeType != 1 ) ) {
             return false;
@@ -3396,6 +3607,7 @@ var check_timeline_headers = ( function () {
         if ( check_profile_heading( $node ) ) counter ++;
         if ( check_search_timeline( $node ) ) counter ++;
         if ( check_notifications_timeline( $node ) ) counter ++;
+        if ( check_bookmarks_timeline( $node ) ) counter ++;
         
         if ( 0 < counter ) log_debug( 'check_timeline_headers():', counter );
         

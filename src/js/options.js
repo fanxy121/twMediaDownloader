@@ -49,7 +49,7 @@ $( async function () {
         ],
         
         INT_KV_LIST = [
-            { key : 'DOWNLOAD_SIZE_LIMIT_MB', val : 500, min : 10, max : 10000 }
+            { key : 'DOWNLOAD_SIZE_LIMIT_MB', val : 10000, min : 10, max : 10000 }
         ],
         
         STR_KV_LIST = [
