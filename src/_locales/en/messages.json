@@ -83,4 +83,7 @@
 ,   "TAB_SORTING_ENABLED" : {
         "message" : "[1][2][3][4]"
     }
+,   "AUTO_CONTINUE" : {
+        "message" : "Automatic continuation after download limit is reached"
+    }
 }

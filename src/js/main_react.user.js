@@ -98,6 +98,7 @@ var OPTIONS = {
     // ※検索タイムライン使用時、filter: をかけない場合にヒットする画像や動画が、filter: をかけるとヒットしないことがある
 ,   DOWNLOAD_SIZE_LIMIT_MB : 10000 // ダウンロード時のサイズ制限(MB)
 ,   ENABLE_VIDEO_DOWNLOAD : true // true: 動画ダウンロードを有効にする（ユーザー認証が必要）
+,   AUTO_CONTINUE : true // true: 個数または容量制限にて止まった際、保存後に自動継続
     
 ,   OPERATION : true // true: 動作中、false: 停止中
 
@@ -2719,6 +2720,26 @@ var download_media_timeline = ( function () {
                 } // end of close_dialog()
                 
                 
+                function is_empty_result() {
+                    return ( ( ! min_id ) || ( ! max_id ) || ( total_tweet_counter <= 0 ) || ( ( ! filter_info.nomedia ) && ( total_media_counter <= 0 ) ) );
+                } // end of is_empty_result()
+                
+                
+                function is_limited_by_tweet_number() {
+                    return ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) );
+                } // end of is_limited_by_tweet_number()
+                
+                
+                function is_limited_by_file_size() {
+                    return ( OPTIONS.DOWNLOAD_SIZE_LIMIT_MB && ( OPTIONS.DOWNLOAD_SIZE_LIMIT_MB * 1000000 <= total_file_size ) );
+                } // end of is_limited_by_file_size()
+                
+                
+                function is_limited_by_some_factor() {
+                    return ( is_limited_by_tweet_number() || is_limited_by_file_size() );
+                } // end of is_limited_by_some_factor()
+                
+                
                 function clean_up( callback ) {
                     zip = null;
                     TimelineObject = null;
@@ -2728,13 +2749,13 @@ var download_media_timeline = ( function () {
                     
                     if ( typeof callback == 'function' ) {
                         callback();
+                        return;
+                    }
+                    
+                    if ( OPTIONS.AUTO_CONTINUE && is_limited_by_some_factor() && min_id ) {
+                        self.$button_start.click();
                     }
                 } // end of clean_up()
-                
-                
-                function is_empty_result() {
-                    return ( ( ! min_id ) || ( ! max_id ) || ( total_tweet_counter <= 0 ) || ( ( ! filter_info.nomedia ) && ( total_media_counter <= 0 ) ) );
-                } // end of is_empty_result()
                 
                 
                 function request_save( callback ) {
@@ -2877,8 +2898,16 @@ var download_media_timeline = ( function () {
                     request_save( function () {
                         self.set_to_show_added_logline();
                         
-                        if ( ( ! dry_run ) && min_id ) {
-                            self.$until_id.val( ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) ? min_datetime : min_id ).trigger( 'change', [ true ] );
+                        if ( min_id ) {
+                            //self.$until_id.val( ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) ? min_datetime : min_id ).trigger( 'change', [ true ] );
+                            if ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) {
+                                // TODO: Tweet ID と違い、時刻の場合は誤差が出る
+                                // →最大1秒分の重複を許容
+                                self.$until_id.val( format_date( new Date( new Date( min_datetime ).getTime() + 1000 ), 'YYYY/MM/DD hh:mm:ss' ) ).trigger( 'change', [ true ] );
+                            }
+                            else {
+                                self.$until_id.val( min_id ).trigger( 'change', [ true ] );
+                            }
                         }
                         
                         if ( typeof callback == 'function' ) {
@@ -2894,7 +2923,7 @@ var download_media_timeline = ( function () {
                     
                     self.set_to_hide_added_logline();
                     
-                    var is_limited = !! ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) );
+                    var is_limited = is_limited_by_some_factor();
                     
                     if ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) {
                         self.log( '[Complete' + ( is_limited  ? '(limited)' : '' ) + ']', min_datetime, '-', max_datetime, ' ( Tweet:', total_tweet_counter, '/ Media:', total_media_counter, ')' );
@@ -2906,8 +2935,16 @@ var download_media_timeline = ( function () {
                     request_save( function () {
                         self.set_to_show_added_logline();
                         
-                        if ( ( ! dry_run ) && is_limited && min_id ) {
-                            self.$until_id.val( ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) ? min_datetime : min_id ).trigger( 'change', [ true ] );
+                        if ( is_limited && min_id ) {
+                            //self.$until_id.val( ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) ? min_datetime : min_id ).trigger( 'change', [ true ] );
+                            if ( self.is_for_likes_timeline || self.is_for_notifications_timeline || self.is_for_bookmarks_timeline ) {
+                                // TODO: Tweet ID と違い、時刻の場合は誤差が出る
+                                // →最大1秒分の重複を許容
+                                self.$until_id.val( format_date( new Date( new Date( min_datetime ).getTime() + 1000 ), 'YYYY/MM/DD hh:mm:ss' ) ).trigger( 'change', [ true ] );
+                            }
+                            else {
+                                self.$until_id.val( min_id ).trigger( 'change', [ true ] );
+                            }
                         }
                         
                         if ( typeof callback == 'function' ) {
@@ -2949,8 +2986,9 @@ var download_media_timeline = ( function () {
                         return;
                     }
                     
-                    if ( ( ! tweet_info ) || ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) ) ) {
+                    if ( ! tweet_info ) {
                         if ( TimelineObject.timeline_status == TIMELINE_STATUS.error ) {
+                            self.log_hr();
                             try {
                                 self.log( '(*) Timeline error:', TimelineObject.error_message );
                             }
@@ -2958,6 +2996,22 @@ var download_media_timeline = ( function () {
                                 self.log( '(*) Timeline error: Unknown error' );
                             }
                         }
+                        download_completed( () => clean_up() );
+                        return;
+                    }
+                    
+                    if ( is_limited_by_tweet_number() ) {
+                        self.log_hr();
+                        self.log( '(*) Total tweet number is over limit' );
+                        
+                        download_completed( () => clean_up() );
+                        return;
+                    }
+                    
+                    if ( is_limited_by_file_size() )  {
+                        self.log_hr();
+                        self.log( '(*) Total file size is over limit' );
+                        
                         download_completed( () => clean_up() );
                         return;
                     }
@@ -3204,19 +3258,21 @@ var download_media_timeline = ( function () {
                                 self.log( '  ' + media_prefix + report_index + '\x29', media_url );
                             }
                             
-                            if ( ( OPTIONS.DOWNLOAD_SIZE_LIMIT_MB ) && ( OPTIONS.DOWNLOAD_SIZE_LIMIT_MB * 1000000 <= total_file_size ) ) {
-                                self.log_hr();
-                                self.log( 'Stop: Total file size is over limit' );
-                                
-                                self.$button_stop.click();
-                                
-                                if ( is_stop_download_requested() || is_close_dialog_requested() ) {
-                                    return;
-                                }
-                                else {
-                                    log_error( '[bug] unknown error' );
-                                }
-                            }
+                            /*
+                            //if ( ( OPTIONS.DOWNLOAD_SIZE_LIMIT_MB ) && ( OPTIONS.DOWNLOAD_SIZE_LIMIT_MB * 1000000 <= total_file_size ) ) {
+                            //    self.log_hr();
+                            //    self.log( 'Stop: Total file size is over limit' );
+                            //    
+                            //    self.$button_stop.click();
+                            //    
+                            //    if ( is_stop_download_requested() || is_close_dialog_requested() ) {
+                            //        return;
+                            //    }
+                            //    else {
+                            //        log_error( '[bug] unknown error' );
+                            //    }
+                            //}
+                            */
                             
                             total_media_counter ++;
                         }

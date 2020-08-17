@@ -56,7 +56,7 @@ function get_init_function( message_type, option_name_to_function_map, namespace
         }
         
         Object.keys( option_name_to_function_map ).forEach( function ( option_name ) {
-            if ( ! ( response.hasOwnProperty( option_name ) ) ) {
+            if ( ! ( Object.prototype.hasOwnProperty.call( response, option_name ) ) ) {
                 options[ option_name ] = null;
                 return;
             }
@@ -126,6 +126,7 @@ var twMediaDownloader_chrome_init = ( function() {
         ,   INCOGNITO_MODE : get_bool
         ,   ENABLED_ON_TWEETDECK : get_bool
         ,   TAB_SORTING : get_bool
+        ,   AUTO_CONTINUE : get_bool
         };
     
     return get_init_function( 'GET_OPTIONS', option_name_to_function_map );
