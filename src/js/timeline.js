@@ -597,7 +597,7 @@ const
             
             let result;
             
-            if ( IS_WEB_EXTENSION && browser && ( true || ! IS_FIREFOX ) ) {
+            if ( IS_WEB_EXTENSION && browser && ( ! IS_FIREFOX ) ) {
                 /*
                 // 注意：[Firefox でコンテナーを使用している場合、background 経由だと動作しない（403 Forbidden発生）](https://twitter.com/furyutei/status/1295057562870546433)
                 */
