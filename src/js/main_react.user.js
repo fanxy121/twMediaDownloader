@@ -2732,6 +2732,11 @@ var download_media_timeline = ( function () {
                 } // end of clean_up()
                 
                 
+                function is_empty_result() {
+                    return ( ( ! min_id ) || ( ! max_id ) || ( total_tweet_counter <= 0 ) || ( ( ! filter_info.nomedia ) && ( total_media_counter <= 0 ) ) );
+                } // end of is_empty_result()
+                
+                
                 function request_save( callback ) {
                     async function _callback() {
                         if ( ( ! dry_run ) && ( ! until_date_raw ) ) {
@@ -2747,14 +2752,14 @@ var download_media_timeline = ( function () {
                             } );
                         }
                         
-                        self.update_status_bar( 'Done.' );
+                        self.update_status_bar( is_empty_result() ? 'No applicable tweets found.' : 'Done.' );
                         
                         if ( typeof callback == 'function' ) {
                             callback();
                         }
                     }  // end of _callback()
                     
-                    if ( ( ! min_id ) || ( ! max_id ) || ( total_tweet_counter <= 0 ) || ( ( ! filter_info.nomedia ) && ( total_media_counter <= 0 ) ) ) {
+                    if ( is_empty_result() ) {
                         _callback();
                         return;
                     }
@@ -2945,6 +2950,14 @@ var download_media_timeline = ( function () {
                     }
                     
                     if ( ( ! tweet_info ) || ( limit_tweet_number && ( limit_tweet_number <= total_tweet_counter ) ) ) {
+                        if ( TimelineObject.timeline_status == TIMELINE_STATUS.error ) {
+                            try {
+                                self.log( '(*) Timeline error:', TimelineObject.error_message );
+                            }
+                            catch ( error ) {
+                                self.log( '(*) Timeline error: Unknown error' );
+                            }
+                        }
                         download_completed( () => clean_up() );
                         return;
                     }
@@ -4365,7 +4378,7 @@ function start_mutation_observer() {
             try {
                 stop_observe();
                 
-                update_twitter_api_info();
+                //update_twitter_api_info(); // 2020.08.17: OAuth 1.0a認証を伴ったAPIは利用しないようになったので無効化
                 update_display_mode();
                 
                 // TODO: React版 Twitter の場合、要素ごとの処理を行うと取りこぼしが出てしまう

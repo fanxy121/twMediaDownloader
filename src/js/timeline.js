@@ -597,7 +597,11 @@ const
             
             let result;
             
-            if ( IS_WEB_EXTENSION && browser ) {
+            if ( IS_WEB_EXTENSION && browser && ( true || ! IS_FIREFOX ) ) {
+                /*
+                // 注意：[Firefox でコンテナーを使用している場合、background 経由だと動作しない（403 Forbidden発生）](https://twitter.com/furyutei/status/1295057562870546433)
+                */
+                
                 /*
                 // fetch() を使用した場合、Chrome において戻り値が null になる→レスポンスボディが空のため、response.json() でエラーが発生
                 // > Cross-Origin Read Blocking (CORB) blocked cross-origin response <url> with MIME type application/json. See https://www.chromestatus.com/feature/5629709824032768 for more details.
@@ -1286,6 +1290,8 @@ const
             self.timeline_type = TIMELINE_TYPE.unknown;
             self.api_type_in_use = API_TYPE_IN_USE.same_as_timeline_type;
             self.timeline_status = TIMELINE_STATUS.init;
+            self.last_error = null;
+            self.last_result = null;
             
             self.tweet_info_list = [];
             
@@ -1359,6 +1365,7 @@ const
             
             await self.fetch_tweets_function().catch( ( error ) => {
                 log_error( 'fetch_tweets.call():', error );
+                self.last_error = error;
                 return null;
             } );
             
@@ -1415,6 +1422,32 @@ const
         get current_api_type() {
             return ( this.api_type_in_use == API_TYPE_IN_USE.same_as_timeline_type ) ? this.timeline_type : this.api_type_in_use;
         } // end of get current_api_type()
+        
+        get error_message() {
+            const
+                self = this,
+                unknown_error = 'Unknown error';
+            
+            if ( self.timeline_status != TIMELINE_STATUS.error ) {
+                return '';
+            }
+            
+            let last_result = self.last_result;
+            
+            if ( ! last_result ) {
+                return self.last_error || unknown_error;
+            }
+            
+            if ( last_result.json && last_result.json.errors ) {
+                try {
+                    return ( '[API] ' + ( last_result.json.errors[ 0 ].code || 0 ) + ': ' + last_result.json.errors[ 0 ].message ) || unknown_error;
+                }
+                catch ( error ) {
+                }
+            }
+            
+            return last_result.error || self.last_error || unknown_error;
+        } // end of get error_message()
     }, // end of class ClassTimelineTemplate
     
     ClassUserTimeline = class extends ClassTimelineTemplate {
@@ -1450,12 +1483,13 @@ const
             const
                 self = this;
             
-            let result = await TIMELINE_TOOLBOX.get_user_timeline_info( {
+            let result = self.last_result = await TIMELINE_TOOLBOX.get_user_timeline_info( {
                     screen_name : self.screen_name,
                     max_id : self.max_tweet_id,
                     count : TWITTER_API.definition( TIMELINE_TYPE.user ).tweet_number.limit,
                 } ).catch( ( error ) => {
                     log_error( 'TIMELINE_TOOLBOX.get_user_timeline_info():', error );
+                    self.last_error = error;
                     return null;
                 } );
             
@@ -1480,12 +1514,13 @@ const
             const
                 self = this;
             
-            let result = await TIMELINE_TOOLBOX.get_search_timeline_info( self.search_query, {
+            let result = self.last_result = await TIMELINE_TOOLBOX.get_search_timeline_info( self.search_query, {
                     count : TWITTER_API.definition( TIMELINE_TYPE.search ).tweet_number.limit,
                 } ).catch( ( error ) => {
-                log_error( 'TIMELINE_TOOLBOX.get_search_timeline_info():', error );
-                return null;
-            } );
+                    log_error( 'TIMELINE_TOOLBOX.get_search_timeline_info():', error );
+                    self.last_error = error;
+                    return null;
+                } );
             
             if ( ( ! result ) || ( ! result.timeline_info ) ) {
                 log_error( 'unknown result:', result );
@@ -1547,12 +1582,13 @@ const
             const
                 self = this;
             
-            let result = await TIMELINE_TOOLBOX.get_search_timeline_info( self.search_query, {
+            let result = self.last_result = await TIMELINE_TOOLBOX.get_search_timeline_info( self.search_query, {
                     count : TWITTER_API.definition( TIMELINE_TYPE.search ).tweet_number.limit,
                 } ).catch( ( error ) => {
-                log_error( 'TIMELINE_TOOLBOX.get_search_timeline_info():', error );
-                return null;
-            } );
+                    log_error( 'TIMELINE_TOOLBOX.get_search_timeline_info():', error );
+                    self.last_error = error;
+                    return null;
+                } );
             
             if ( ( ! result ) || ( ! result.timeline_info ) ) {
                 log_error( 'unknown result:', result );
@@ -1606,13 +1642,14 @@ const
             const
                 self = this;
             
-            let result = await TIMELINE_TOOLBOX.get_notifications_timeline_info( {
+            let result = self.last_result = await TIMELINE_TOOLBOX.get_notifications_timeline_info( {
                     max_id : self.max_timestamp_ms,
                     count : TWITTER_API.definition( TIMELINE_TYPE.notifications ).tweet_number.limit,
                 } ).catch( ( error ) => {
-                log_error( 'TIMELINE_TOOLBOX.get_notifications_timeline_info():', error );
-                return null;
-            } );
+                    log_error( 'TIMELINE_TOOLBOX.get_notifications_timeline_info():', error );
+                    self.last_error = error;
+                    return null;
+                } );
             
             if ( ( ! result ) || ( ! result.timeline_info ) ) {
                 log_error( 'unknown result:', result );
@@ -1636,12 +1673,13 @@ const
             const
                 self = this;
             
-            let result = await TIMELINE_TOOLBOX.get_search_timeline_info( self.search_query, {
+            let result = self.last_result = await TIMELINE_TOOLBOX.get_search_timeline_info( self.search_query, {
                     count : TWITTER_API.definition( TIMELINE_TYPE.search ).tweet_number.limit,
                 } ).catch( ( error ) => {
-                log_error( 'TIMELINE_TOOLBOX.get_search_timeline_info():', error );
-                return null;
-            } );
+                    log_error( 'TIMELINE_TOOLBOX.get_search_timeline_info():', error );
+                    self.last_error = error;
+                    return null;
+                } );
             
             if ( ( ! result ) || ( ! result.timeline_info ) ) {
                 log_error( 'unknown result:', result );
@@ -1685,14 +1723,15 @@ const
             const
                 self = this;
             
-            let result = await TIMELINE_TOOLBOX.get_likes_legacy_timeline_info( {
+            let result = self.last_result = await TIMELINE_TOOLBOX.get_likes_legacy_timeline_info( {
                     screen_name : self.screen_name,
                     max_id : self.max_tweet_id,
                     count : TWITTER_API.definition( TIMELINE_TYPE.likes_legacy ).tweet_number.limit,
                 } ).catch( ( error ) => {
-                log_error( 'TIMELINE_TOOLBOX.get_likes_legacy_timeline_info():', error );
-                return null;
-            } );
+                    log_error( 'TIMELINE_TOOLBOX.get_likes_legacy_timeline_info():', error );
+                    self.last_error = error;
+                    return null;
+                } );
             
             if ( ( ! result ) || ( ! result.timeline_info ) ) {
                 log_error( 'unknown result:', result );
@@ -1745,7 +1784,7 @@ const
                 user_info = self.user_info = await TWITTER_API.get_user_info( { user_id : self.user_id, screen_name : self.screen_name } );
             }
             
-            let result = await TIMELINE_TOOLBOX.get_likes_timeline_info( {
+            let result = self.last_result = await TIMELINE_TOOLBOX.get_likes_timeline_info( {
                     user_id : user_info.id_str,
                     screen_name : user_info.screen_name,
                     user_name : user_info.name,
@@ -1753,9 +1792,10 @@ const
                     cursor : self.cursor,
                     count : TWITTER_API.definition( TIMELINE_TYPE.likes ).tweet_number.limit,
                 } ).catch( ( error ) => {
-                log_error( 'TIMELINE_TOOLBOX.get_likes_timeline_info():', error );
-                return null;
-            } );
+                    log_error( 'TIMELINE_TOOLBOX.get_likes_timeline_info():', error );
+                    self.last_error = error;
+                    return null;
+                } );
             
             if ( ( ! result ) || ( ! result.timeline_info ) ) {
                 log_error( 'unknown result:', result );
@@ -1809,7 +1849,7 @@ const
                 user_info = self.user_info = await TWITTER_API.get_user_info( { user_id : self.user_id, screen_name : self.screen_name } );
             }
             
-            let result = await TIMELINE_TOOLBOX.get_bookmarks_timeline_info( {
+            let result = self.last_result = await TIMELINE_TOOLBOX.get_bookmarks_timeline_info( {
                     user_id : user_info.id_str,
                     screen_name : user_info.screen_name,
                     user_name : user_info.name,
@@ -1817,9 +1857,10 @@ const
                     cursor : self.cursor,
                     count : TWITTER_API.definition( TIMELINE_TYPE.bookmarks ).tweet_number.limit,
                 } ).catch( ( error ) => {
-                log_error( 'TIMELINE_TOOLBOX.get_bookmarks_timeline_info():', error );
-                return null;
-            } );
+                    log_error( 'TIMELINE_TOOLBOX.get_bookmarks_timeline_info():', error );
+                    self.last_error = error;
+                    return null;
+                } );
             
             if ( ( ! result ) || ( ! result.timeline_info ) ) {
                 log_error( 'unknown result:', result );
