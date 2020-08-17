@@ -96,7 +96,7 @@ var OPTIONS = {
 ,   OPEN_MEDIA_LINK_BY_DEFAULT : false // true: デフォルトでメディアリンクを開く（[Alt]＋Click時にダウンロード）
 ,   ENABLE_FILTER : true // true: 検索タイムライン使用時に filter: をかける
     // ※検索タイムライン使用時、filter: をかけない場合にヒットする画像や動画が、filter: をかけるとヒットしないことがある
-,   DOWNLOAD_SIZE_LIMIT_MB : 10000 // ダウンロード時のサイズ制限(MB)
+,   DOWNLOAD_SIZE_LIMIT_MB : 500 // ダウンロード時のサイズ制限(MB)
 ,   ENABLE_VIDEO_DOWNLOAD : true // true: 動画ダウンロードを有効にする（ユーザー認証が必要）
 ,   AUTO_CONTINUE : true // true: 個数または容量制限にて止まった際、保存後に自動継続
     
@@ -1493,6 +1493,8 @@ var download_media_timeline = ( function () {
         ,   is_for_notifications_timeline : false
         ,   is_for_bookmarks_timeline : false
         
+        ,   cursor_to_continue : null // Like / Bookmarks タイムラインで継続する際の cursor
+        
         ,   $container : null
         ,   $log : null
         ,   $since_id : null
@@ -2324,6 +2326,7 @@ var download_media_timeline = ( function () {
                     timeline_type = self.timeline_type = options.timeline_type,
                     screen_name = self.screen_name = get_screen_name(),
                     logined_screen_name = self.logined_screen_name = get_logined_screen_name(),
+                    cursor_to_continue = self.cursor_to_continue = null,
                     last_date_range_info = await self.load_date_range_info().catch( ( error ) => {
                         log_error( 'load_date_range_info() error:', error );
                         return {};
@@ -2605,6 +2608,7 @@ var download_media_timeline = ( function () {
                             TimelineObject = new ClassTimeline( {
                                 screen_name : screen_name,
                                 max_timestamp_ms : max_timestamp_ms, // TODO: 実質意味がない（/2/timeline/favorites/<user_id> において、頭出しする方法が不明）
+                                cursor : self.cursor_to_continue,
                             } );
                         }
                         break;
@@ -2613,6 +2617,7 @@ var download_media_timeline = ( function () {
                             TimelineObject = new ClassTimeline( {
                                 screen_name : logined_screen_name,
                                 max_timestamp_ms : max_timestamp_ms, // TODO: 実質意味がない（/2/timeline/bookmark/<user_id> において、頭出しする方法が不明）
+                                cursor : self.cursor_to_continue,
                             } );
                         }
                         break;
@@ -2742,10 +2747,19 @@ var download_media_timeline = ( function () {
                 
                 function clean_up( callback ) {
                     zip = null;
-                    TimelineObject = null;
                     
                     self.reset_flags();
                     self.reset_buttons();
+                    
+                    if ( OPTIONS.AUTO_CONTINUE && TimelineObject && ( TimelineObject.timeline_status != TIMELINE_STATUS.error ) && is_limited_by_some_factor() && min_id ) {
+                        //self.cursor_to_continue = TimelineObject.cursor;
+                        self.cursor_to_continue = TimelineObject.last_cursor;
+                    }
+                    else {
+                        self.cursor_to_continue = null;
+                    }
+                    
+                    TimelineObject = null;
                     
                     if ( typeof callback == 'function' ) {
                         callback();
@@ -3017,7 +3031,7 @@ var download_media_timeline = ( function () {
                     }
                     
                     fetched_tweet_counter ++;
-                    self.update_status_bar( 'Searching ... ' + fetched_tweet_counter );
+                    self.update_status_bar( 'Searching ... ' + fetched_tweet_counter + '    (Size: ' + Math.floor( total_file_size / 1000000 ) + ' MiB / Limit: ' + OPTIONS.DOWNLOAD_SIZE_LIMIT_MB + ' MiB)' );
                     
                     let reacted_info = tweet_info.reacted_info,
                         target_tweet_info,
@@ -4626,7 +4640,7 @@ function initialize( user_options ) {
             ,   dialog_container_selector + ' ' + log_selector + ' .log-item a.tweet-link {color: brown;}'
             ,   dialog_container_selector + ' ' + log_selector + ' .log-item a.media-link {color: navy;}'
             
-            ,   dialog_container_selector + ' ' + status_bar_selector + ' {padding: 0 0 0 16px; color: #66757f; font-size: 12px;}'
+            ,   dialog_container_selector + ' ' + status_bar_selector + ' {padding: 0 0 0 16px; color: #66757f; font-size: 12px; white-space: pre;}'
             
             ,   night_mode_dialog_container_selector + ' {background: rgba( 0, 0, 0, 0.8 );}'
             ,   night_mode_dialog_container_selector + ' ' + dialog_selector + ' {background: #141d26;}'

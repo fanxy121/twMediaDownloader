@@ -1766,8 +1766,9 @@ const
             
             self.user_id = parameters.user_id;
             self.screen_name = parameters.screen_name;
+            self.cursor = parameters.cursor; // TODO: cursor は 'HBbuwYDwsNyOvi4AAA==' のような値であり、開始時刻をどのように置き換えればよいかがわからない
+            self.last_cursor = null;
             self.user_info = null;
-            self.cursor = null; // TODO: cursor は 'HBbuwYDwsNyOvi4AAA==' のような値であり、開始時刻をどのように置き換えればよいかがわからない
             
             self.timeline_status = TIMELINE_STATUS.search;
             
@@ -1783,6 +1784,8 @@ const
             if ( ! user_info ) {
                 user_info = self.user_info = await TWITTER_API.get_user_info( { user_id : self.user_id, screen_name : self.screen_name } );
             }
+            
+            self.last_cursor = self.cursor;
             
             let result = self.last_result = await TIMELINE_TOOLBOX.get_likes_timeline_info( {
                     user_id : user_info.id_str,
@@ -1831,8 +1834,9 @@ const
             
             self.user_id = parameters.user_id;
             self.screen_name = parameters.screen_name;
+            self.cursor = parameters.cursor; // TODO: cursor は 'HBaA9ISd7/33hwsAAA==' のような値であり、開始時刻をどのように置き換えればよいかがわからない
+            self.last_cursor = null;
             self.user_info = null;
-            self.cursor = null; // TODO: cursor は 'HBaA9ISd7/33hwsAAA==' のような値であり、開始時刻をどのように置き換えればよいかがわからない
             
             self.timeline_status = TIMELINE_STATUS.search;
             
@@ -1848,6 +1852,8 @@ const
             if ( ! user_info ) {
                 user_info = self.user_info = await TWITTER_API.get_user_info( { user_id : self.user_id, screen_name : self.screen_name } );
             }
+            
+            self.last_cursor = self.cursor;
             
             let result = self.last_result = await TIMELINE_TOOLBOX.get_bookmarks_timeline_info( {
                     user_id : user_info.id_str,
