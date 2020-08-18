@@ -13,6 +13,10 @@ const
     DEFAULT_DEBUG_MODE = false,
     DEFAULT_SCRIPT_NAME = MODULE_NAME,
     
+    ENABLE_EXTERNAL_DECIMAL_LIBRARY = true, // BigInt 取り扱い用に外部 Decimalライブラリを使用するかどうかを設定
+    // true : BigInt を扱うライブラリとして、[MikeMcl/decimal.js: An arbitrary-precision Decimal type for JavaScript](https://github.com/MikeMcl/decimal.js) を優先して使用
+    // false: 本モジュール内で Decimal class を定義して使用
+    
     self = undefined,
     // TODO: class 関数内で self を使っているが、window.self が参照できるため、定義し忘れていてもエラーにならず気づきにくい
     // →暫定的に const self を undefined で定義して window.self への参照を切る
@@ -109,7 +113,7 @@ const
     } )(),
     
     Decimal = ( () => {
-        if ( context_global.Decimal ) {
+        if ( ENABLE_EXTERNAL_DECIMAL_LIBRARY && context_global.Decimal ) {
             // [MikeMcl/decimal.js: An arbitrary-precision Decimal type for JavaScript](https://github.com/MikeMcl/decimal.js)
             return context_global.Decimal;
         }
@@ -176,7 +180,7 @@ const
                 }
                 
                 toString() {
-                    return this.bignum.toString();
+                    return this.bignum.toString.apply( this.bignum, arguments );
                 }
             };
         
@@ -288,6 +292,83 @@ const
     convert_bookmark_id_to_date = ( bookmark_id ) => {
         return new Date( convert_bookmark_id_to_utc_msec( bookmark_id ) );
     }, // end of convert_bookmark_id_to_date()
+    
+    {
+        create_likes_cursor,
+        create_bookmarks_cursor,
+    } = ( () => {
+        const
+            num_to_dec64_char_map = Array( 64 ).fill().map( (_, i ) => {
+                if ( 0 <= i && i <= 25 ) return String.fromCharCode( 'A'.charCodeAt(0) + i );
+                if ( 26 <= i && i <= 51 ) return String.fromCharCode( 'a'.charCodeAt(0) + ( i - 26 ) );
+                if ( 52 <= i && i <= 61 ) return '' + ( i - 52 );
+                if ( i == 62 ) return '+';
+                return '/';
+            } ),
+            
+            to_binary = ( () => {
+                let to_binary;
+                
+                if ( typeof Decimal.prototype.toBinary == 'function' ) {
+                    // MikeMcl/decimal.js の場合、toString(2) では変換できない
+                    return ( decimal_object ) => {
+                        return decimal_object.toBinary().replace( /^0b/, '' );
+                    };
+                }
+                else {
+                    return ( decimal_object ) => {
+                        return decimal_object.toString( 2 );
+                    };
+                }
+            } )(),
+            
+            create_likes_cursor = ( like_id, is_previous = false ) => {
+                let sort_index_bin = ( '0'.repeat( 64 ) + to_binary( new Decimal( like_id ) ) ).slice( -64 ),
+                    cursor = [
+                    /*  0 */ sort_index_bin.substr( 5, 4 ) + '00',
+                    /*  1 */ sort_index_bin.substr( 14, 2 ) + sort_index_bin.substr( 1, 4 ),
+                    /*  2 */ '1' + sort_index_bin.substr( 9, 5 ),
+                    /*  3 */ sort_index_bin.substr( 17, 6 ),
+                    /*  4 */ sort_index_bin.substr( 26, 4 ) + '1' + sort_index_bin.substr( 16, 1 ),
+                    /*  5 */ sort_index_bin.substr( 35, 2 ) + '1' + sort_index_bin.substr( 23, 3 ),
+                    /*  6 */ '1' + sort_index_bin.substr( 30, 5 ),
+                    /*  7 */ sort_index_bin.substr( 38, 6 ),
+                    /*  8 */ sort_index_bin.substr( 47, 4 ) + '1' + sort_index_bin.substr( 37, 1 ),
+                    /*  9 */ sort_index_bin.substr( 56, 2 ) + '1' + sort_index_bin.substr( 44, 3 ),
+                    /* 10 */ '1' + sort_index_bin.substr( 51, 5 ),
+                    /* 11 */ ( '0'.repeat( 5 ) + ( parseInt( sort_index_bin.substr( 59, 5 ), 2 ) + 1 ).toString( 2 ) ).slice( -5 ) + '0',
+                    /* 12 */ '001101' + sort_index_bin.substr( 58, 1 ),
+                    ].map( ( sexted_bin, index ) => num_to_dec64_char_map[ parseInt( sexted_bin, 2 ) ] ).reverse().join( '' );
+                
+                return ( is_previous ? 'HC' : 'HB' ) +  cursor + 'AAA==';
+            },
+            
+            create_bookmarks_cursor = ( bookmark_id, is_previous = false ) => {
+                let sort_index_bin = ( '0'.repeat( 64 ) + to_binary( new Decimal( bookmark_id ) ) ).slice( -64 ),
+                    cursor = [
+                    /*  0 */ sort_index_bin.substr( 5, 4 ) + '00',
+                    /*  1 */ sort_index_bin.substr( 14, 2 ) + sort_index_bin.substr( 1, 4 ),
+                    /*  2 */ '1' + sort_index_bin.substr( 9, 5 ),
+                    /*  3 */ sort_index_bin.substr( 17, 6 ),
+                    /*  4 */ sort_index_bin.substr( 26, 4 ) + '1' + sort_index_bin.substr( 16, 1 ),
+                    /*  5 */ sort_index_bin.substr( 35, 2 ) + '1' + sort_index_bin.substr( 23, 3 ),
+                    /*  6 */ '1' + sort_index_bin.substr( 30, 5 ),
+                    /*  7 */ sort_index_bin.substr( 38, 5 ) + sort_index_bin.substr( 43, 1 ),
+                    /*  8 */ sort_index_bin.substr( 47, 4 ) + '1' + sort_index_bin.substr( 37, 1 ),
+                    /*  9 */ '001' + sort_index_bin.substr( 44, 3 ),
+                    /* 10 */ '1' + ( '0'.repeat( 5 ) + ( parseInt( sort_index_bin.substr( 51, 5 ), 2 ) + 1 ).toString( 2 ) ).slice( -5 ),
+                    /* 11 */ '000000',
+                    /* 12 */ '011010',
+                    ].map( ( sexted_bin, index ) => num_to_dec64_char_map[ parseInt( sexted_bin, 2 ) ] ).reverse().join( '' );
+                
+                return ( is_previous ? 'HC' : 'HB' ) +  cursor + 'AAA==';
+            };
+        
+        return {
+            create_likes_cursor,
+            create_bookmarks_cursor,
+        };
+    } )(),
     
     wait = async ( wait_msec ) => {
         if ( wait_msec <= 0 ) {
@@ -591,8 +672,8 @@ const
             options = Object.assign( {
                 method : 'GET',
                 headers : self.create_api_header(),
-                mode: 'cors',
-                credentials: 'include',
+                mode : 'cors',
+                credentials : 'include',
             }, options || {} );
             
             let result;
@@ -1766,7 +1847,18 @@ const
             
             self.user_id = parameters.user_id;
             self.screen_name = parameters.screen_name;
-            self.cursor = parameters.cursor; // TODO: cursor は 'HBbuwYDwsNyOvi4AAA==' のような値であり、開始時刻をどのように置き換えればよいかがわからない
+            
+            let cursor = self.cursor = parameters.cursor,
+                max_timestamp_ms = self.max_timestamp_ms;
+            
+            if ( ( ! cursor ) && max_timestamp_ms ) {
+                // TODO: cursor は 'HBbuwYDwsNyOvi4AAA==' のような値であり、開始時刻をどのように置き換えればよいかがわからない
+                // →独自に解析し、時刻→Like ID→cursor 値へと変換できるように試みている
+                let like_id = convert_utc_msec_to_like_id( max_timestamp_ms );
+                cursor = self.cursor = create_likes_cursor( like_id );
+                log_debug( 'create likes cursor:', cursor, 'like_id:', like_id, 'max_timestamp_ms:', max_timestamp_ms );
+            }
+            
             self.last_cursor = null;
             self.user_info = null;
             
@@ -1834,7 +1926,19 @@ const
             
             self.user_id = parameters.user_id;
             self.screen_name = parameters.screen_name;
-            self.cursor = parameters.cursor; // TODO: cursor は 'HBaA9ISd7/33hwsAAA==' のような値であり、開始時刻をどのように置き換えればよいかがわからない
+            self.cursor = parameters.cursor;
+            
+            let cursor = self.cursor = parameters.cursor,
+                max_timestamp_ms = self.max_timestamp_ms;
+            
+            if ( ( ! cursor ) && max_timestamp_ms ) {
+                // TODO: cursor は 'HBaA9ISd7/33hwsAAA==' のような値であり、開始時刻をどのように置き換えればよいかがわからない
+                // →独自に解析し、時刻→Bookmark ID→cursor 値へと変換できるように試みている
+                let bookmark_id = convert_utc_msec_to_bookmark_id( max_timestamp_ms );
+                cursor = self.cursor = create_bookmarks_cursor( bookmark_id );
+                log_debug( 'create bookmarks cursor:', cursor, 'bookmark_id:', bookmark_id, 'max_timestamp_ms:', max_timestamp_ms );
+            }
+            
             self.last_cursor = null;
             self.user_info = null;
             
@@ -1893,8 +1997,8 @@ const
         [ TIMELINE_TYPE.notifications ] : ClassNotificationsTimeline,
         [ TIMELINE_TYPE.likes_legacy ] : ClassLikesLegacyTimeline,
         //[ TIMELINE_TYPE.likes ] : ClassLikesLegacyTimeline, // TODO: /1.1/favorites/list だと、いいねした時系列順ではなく、ツイートID順に並んでしまう
-        [ TIMELINE_TYPE.likes ] : ClassLikesTimeline, // TODO: /2/timeline/favorites/<user_id> において、頭出しする（ある時期より前をcursor指定する）方法がわからない
-        [ TIMELINE_TYPE.bookmarks ] : ClassBookmarksTimeline, // TODO: /2/timeline/bookmark において、頭出しする（ある時期より前をcursor指定する）方法がわからない
+        [ TIMELINE_TYPE.likes ] : ClassLikesTimeline,
+        [ TIMELINE_TYPE.bookmarks ] : ClassBookmarksTimeline,
     };
 
 

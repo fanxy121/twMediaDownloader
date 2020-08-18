@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Twitter Media Downloader for new Twitter.com 2019
 // @description     Download media files on new Twitter.com 2019.
-// @version         0.1.4.9
+// @version         0.1.4.12
 // @namespace       https://memo.furyutei.work/
 // @author          furyu
 // @include         https://twitter.com/*
@@ -3031,7 +3031,12 @@ var download_media_timeline = ( function () {
                     }
                     
                     fetched_tweet_counter ++;
-                    self.update_status_bar( 'Searching ... ' + fetched_tweet_counter + '    (Size: ' + Math.floor( total_file_size / 1000000 ) + ' MiB / Limit: ' + OPTIONS.DOWNLOAD_SIZE_LIMIT_MB + ' MiB)' );
+                    if ( dry_run ) {
+                        self.update_status_bar( 'Searching ... ' + fetched_tweet_counter );
+                    }
+                    else {
+                        self.update_status_bar( 'Searching ... ' + fetched_tweet_counter + '    (Size: ' + Math.floor( total_file_size / 1000000 ) + ' MiB / Limit: ' + OPTIONS.DOWNLOAD_SIZE_LIMIT_MB + ' MiB)' );
+                    }
                     
                     let reacted_info = tweet_info.reacted_info,
                         target_tweet_info,
