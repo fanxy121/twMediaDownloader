@@ -2,7 +2,7 @@
     "manifest_version" : 2
 ,   "name" : "__MSG_ext_title__"
 ,   "short_name" : "__MSG_ext_short_name__"
-,   "version" : "0.1.4.6"
+,   "version" : "0.1.4.12"
 ,   "description" : "__MSG_ext_description__"
 ,   "author" : "furyu"
 ,   "default_locale" : "en"
@@ -22,7 +22,7 @@
         }
     ,   {
             "matches" : [ "*://twitter.com/*", "*://tweetdeck.twitter.com/*", "*://pbs.twimg.com/media/*" ]
-        ,   "js" : [ "js/decimal.min.js", "js/jszip.min.js", "js/zip_request_legacy.js", "js/init.js" ]
+        ,   "js" : [ "js/decimal.min.js", "js/jszip.min.js", "js/zip_request_legacy.js", "js/init.js", "js/timeline.js" ]
         ,   "run_at" : "document_start"
         ,   "all_frames" : true
         }

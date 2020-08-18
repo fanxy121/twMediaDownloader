@@ -37,8 +37,8 @@
         )</span>
       </p>
     <!-- /.radio --></div>
-    <h2 class="i18n">ENABLE_ZIPREQUEST</h2>
-    <div class="opt radio" id="ENABLE_ZIPREQUEST">
+    <h2 class="i18n hidden">ENABLE_ZIPREQUEST</h2>
+    <div class="opt radio hidden" id="ENABLE_ZIPREQUEST">
       <label><input type="radio" value="1" name="ENABLE_ZIPREQUEST" id="ENABLE_ZIPREQUEST_1" /><span class="i18n">ENABLED</span>&nbsp;<span class="note"></span></label>
       <label><input type="radio" value="0" name="ENABLE_ZIPREQUEST" id="ENABLE_ZIPREQUEST_0" /><span class="i18n">DISABLED</span>&nbsp;<span class="note">(<span class="i18n">IF_DOWNLOAD_FAILURE</span>)</span></label>
     <!-- /.radio --></div>
@@ -50,11 +50,16 @@
     <h2 class="i18n">DOWNLOAD_SIZE_LIMIT_MB</h2>
     <div class="opt int" id="DOWNLOAD_SIZE_LIMIT_MB">
       <span class="current short_text"></span>MiB &#8658;
-      <input type="text" value="8" name="DOWNLOAD_SIZE_LIMIT_MB" class="short_text" />&nbsp;MiB (10~10000)
+      <input type="text" value="8" name="DOWNLOAD_SIZE_LIMIT_MB" class="short_text" />&nbsp;MiB (100~10000)
       <input type="button" value="SET" name="SET" class="i18n button" />
     <!-- /.int --></div>
-    <h2 class="i18n">ENABLE_VIDEO_DOWNLOAD</h2>
-    <div class="opt radio" id="ENABLE_VIDEO_DOWNLOAD">
+    <h2 class="i18n">AUTO_CONTINUE</h2>
+    <div class="opt radio" id="AUTO_CONTINUE">
+      <label><input type="radio" value="1" name="AUTO_CONTINUE" id="AUTO_CONTINUE_1" /><span class="i18n">ENABLED</span></label>
+      <label><input type="radio" value="0" name="AUTO_CONTINUE" id="AUTO_CONTINUE_0" /><span class="i18n">DISABLED</span></label>
+    <!-- /.radio --></div>
+    <h2 class="i18n hidden">ENABLE_VIDEO_DOWNLOAD</h2>
+    <div class="opt radio hidden" id="ENABLE_VIDEO_DOWNLOAD">
       <label><input type="radio" value="1" name="ENABLE_VIDEO_DOWNLOAD" id="ENABLE_VIDEO_DOWNLOAD_1" /><span class="i18n">ENABLED</span>&nbsp;<span class="note">(<span class="i18n">USER_AUTH_REQUIRED</span>)</span></label>
       <label><input type="radio" value="0" name="ENABLE_VIDEO_DOWNLOAD" id="ENABLE_VIDEO_DOWNLOAD_0" /><span class="i18n">DISABLED</span>&nbsp;<span class="note"></span></label>
     <!-- /.radio --></div>

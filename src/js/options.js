@@ -46,10 +46,11 @@ $( async function () {
         ,   { key : 'ENABLE_VIDEO_DOWNLOAD', val : true }
         ,   { key : 'ENABLED_ON_TWEETDECK', val : true }
         ,   { key : 'TAB_SORTING', val : true }
+        ,   { key : 'AUTO_CONTINUE', val : true }
         ],
         
         INT_KV_LIST = [
-            { key : 'DOWNLOAD_SIZE_LIMIT_MB', val : 500, min : 10, max : 10000 }
+            { key : 'DOWNLOAD_SIZE_LIMIT_MB', val : 500, min : 100, max : 10000 }
         ],
         
         STR_KV_LIST = [

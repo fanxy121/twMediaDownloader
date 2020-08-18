@@ -121,3 +121,7 @@ input.button {
 .clearfix {
     display: block;
 }
+
+.hidden {
+    display: none;
+}

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Twitter Media Downloader for TweetDeck
 // @description     Download media files on TweetDeck.
-// @version         0.1.4.3
+// @version         0.1.4.8
 // @namespace       https://memo.furyutei.work/
 // @author          furyu
 // @include         https://tweetdeck.twitter.com/*
@@ -15,9 +15,9 @@
 // @require         https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.4/jszip.min.js
 // @require         https://cdnjs.cloudflare.com/ajax/libs/decimal.js/7.3.0/decimal.min.js
-// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/sha1.js
-// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/oauth.js
-// @require         http://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/twitter-api.js
+// @require         https://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/sha1.js
+// @require         https://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/oauth.js
+// @require         https://furyutei.github.io/twMediaDownloader/src/js/twitter-oauth/twitter-api.js
 // ==/UserScript==
 
 /*
@@ -1441,15 +1441,28 @@ function insert_media_buttons() {
 
 
 function start_mutation_observer() {
-    new MutationObserver( function ( records ) {
-        log_debug( '*** MutationObserver ***', records );
-        
-        update_display_mode();
-        
-        if ( OPTIONS.IMAGE_DOWNLOAD_LINK || OPTIONS.VIDEO_DOWNLOAD_LINK ) {
-            check_media_tweets( d.body );
-        }
-    } ).observe( d.body, { childList : true, subtree : true } );
+    const
+        observer = new MutationObserver( ( records ) => {
+            try {
+                stop_observe();
+                
+                update_display_mode();
+                
+                if ( OPTIONS.IMAGE_DOWNLOAD_LINK || OPTIONS.VIDEO_DOWNLOAD_LINK ) {
+                    check_media_tweets( d.body );
+                }
+            }
+            catch ( error ) {
+                log_error( 'Error in MutaionObserver:', error );
+            }
+            finally {
+                start_observe();
+            }
+        } ),
+        start_observe = () => observer.observe( d.body, { childList : true, subtree : true } ),
+        stop_observe = () => observer.disconnect();
+    
+    start_observe();
 } // end of start_mutation_observer()
 
 
